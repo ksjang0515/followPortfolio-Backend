@@ -29,7 +29,11 @@ const userSchema = new mongoose.Schema({
     },
   ],
   subscriber: [
-    { uid: String, stock: [{ ticker: String, qty: Number }], balance: Number },
+    {
+      uid: String,
+      stock: [{ ticker: String, qty: Number }],
+      balance: Number,
+    },
   ],
   portfolio: [
     {
@@ -42,7 +46,13 @@ const userSchema = new mongoose.Schema({
       rateOfReturn: mongoose.Decimal128,
     },
   ],
-  portfolioRate: [{ ticker: String, rate: mongoose.Decimal128 }],
+  portfolioRatio: [
+    {
+      identifier: String,
+      ratio: mongoose.Decimal128,
+      type: String,
+    },
+  ],
   remainingCash: Number,
   syncPeriod: { type: Number, default: 1 },
   totalBalance: Number,

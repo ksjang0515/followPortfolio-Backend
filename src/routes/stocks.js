@@ -14,7 +14,7 @@ const getStockInfo = async (api, tickers) => {
   return info;
 };
 
-const syncPortfolioToKoInv = async (uid) => {
+const syncPortfolioToKoInv = async function (uid) {
   User.findById(uid).then((user) => {
     const api = new Client(
       user.appkey,
@@ -104,30 +104,302 @@ const syncPortfolioToKoInv = async (uid) => {
   });
 };
 
-const syncPortfolioToSub = (uid, targetUid) => {};
+const syncPortfolioToSub = function (uid, targetUid) {};
 
-const syncPortfolioToRatio = (uid) => {
+const getPriceNMarginRate = async (api, ticker) => {
+  return await api.getPrice(ticker).then((response) => ({
+    price: response.body.stck_prpr,
+    marginRate: response.body.marg_rate,
+  }));
+};
+
+const calQty = (balance, { price, marginRate }) =>
+  (balance * (1 / (1 + marginRate))) / price;
+
+const syncPortfolioToRatio = async function (uid, newPortfolioRatio) {
+  // newPortfolioRatio: [{identifier, ratio, type}]
+  User.findById(uid).then(
+    (user) => {
+      // get current raw portfolio(made of only stocks and not subscriptions)
+      // from korea Invest
+      const api = new Client(
+        user.appkey,
+        user.appsecret,
+        user.accNumFront,
+        user.accNumBack,
+        { token: user.token, tokenExpiration: user.tokenExpiration }
+      );
+      api.balance("01").then((response) => {
+        const currentRawPortfolio = {};
+        for (let i = 0; i < response.body.output1.length; i++) {
+          const stock = response.body.output1[i];
+          currentRawPortfolio[stock.pdno] = stock.hldg_qty;
+        }
+        const totalBalance = response.body.output2[0].tot_evlu_amt;
+
+        // calculate new raw portfolio from new ratio
+        // and what stock/remaining cash will each subscription have
+        const newRawPortfolio = {}, // qty
+          newSubscription = [];
+        for (const elem of newPortfolioRatio) {
+          if (elem.type === "stock") {
+            const priceNMarginRate = getPriceNMarginRate(api, elem.identifier);
+            newRawPortfolio[elem.identifier] = newRawPortfolio[elem.identifier]
+              ? newRawPortfolio[elem.identifier] +
+                calQty(totalBalance * elem.ratio, priceNMarginRate)
+              : calQty(totalBalance * elem.ratio, priceNMarginRate);
+          } else if (elem.type === "subscription") {
+            const subBalance = totalBalance * elem.ratio,
+              obj = {
+                uid: elem.identifier,
+                stock: [],
+                balance: subBalance,
+                remainingCash: subBalance,
+              };
+            User.findById(obj.uid).then((targetUser) => {
+              // get portfolio ratio of target user
+              for (const stockRatio of targetUser.portfolioRatio) {
+                const priceNMarginRate = getPriceNMarginRate(
+                  api,
+                  stockRatio.ticker
+                );
+
+                const stockObj = {
+                  ticker: stockRatio.ticker,
+                  balance: stockRatio.ratio * obj.balance,
+                  qty: calQty(this.balance, priceNMarginRate),
+                  price: priceNMarginRate.price,
+                  estimatedValue: this.qty * this.price,
+                };
+
+                newRawPortfolio[stockObj.ticker] = newRawPortfolio[
+                  stockObj.ticker
+                ]
+                  ? newRawPortfolio[stockObj.ticker] + stockObj.qty
+                  : stockObj.qty;
+
+                obj.remainingCash -= stockObj.balance;
+                obj.stock.push(stockObj);
+              }
+            });
+            newSubscription.push(obj);
+          }
+        }
+
+        // newRawPortfolio to number of stocks
+        // call api.getPrice and get price, marginRatio to calculate qty
+        const tickerList = new Set(
+          ...Object.keys(currentRawPortfolio),
+          ...Object,
+          keys(newRawPortfolio)
+        );
+
+        const sellActions = [],
+          buyActions = [];
+        for (const ticker of tickerList) {
+          const oldQty = currentRawPortfolio.ticker
+            ? currentRawPortfolio.ticker
+            : 0;
+          const newQty = newRawPortfolio.ticker ? newRawPortfolio.ticker : 0;
+          if (oldQty > newQty)
+            sellActions.push({ ticker, qty: oldQty - newQty });
+          else if (newQty > oldQty)
+            buyActions.push({ ticker, qty: newQty - oldQty });
+        }
+
+        const sellPromises = [];
+        for (const action of sellActions) {
+          const promise = api.MarketSell(action.ticker, action.qty);
+          sellPromises.push(promise);
+        }
+
+        Promise.all(sellPromises).then(() => {
+          const buyPromises = [];
+          for (const action of buyActions) {
+            const promise = api.MarketBuy(action.ticker, action.qty);
+            buyPromises.push(promise);
+          }
+          Promise.all(buyPromises).then(() => {
+            user.subscription = newSubscription.map((x) => {
+              /*
+              {
+                uid,
+                stock: [{
+                  ticker,
+                  balance,
+                  qty,
+                  price,
+                  estimatedValue
+                }],
+                balance,
+                remainingCash,
+              };
+               */
+              return User.findById(x.uid).then((targetUser) => {
+                const subscriber = targetUser.follower.find(
+                  (y) => y.uid === uid
+                );
+                if (subscriber) {
+                  subscriber.stock = x.stock.map((y) => {
+                    const stockObj = {
+                      ticker: y.ticker,
+                      qty: y.qty,
+                    };
+                    return stockObj;
+                  });
+                  subscriber.balance = x.balance;
+                } else {
+                  targetUser.subscriber.push({
+                    uid: uid,
+                    stock: x.stock.map((y) => {
+                      const stockObj = {
+                        ticker: y.ticker,
+                        qty: y.qty,
+                      };
+                      return stockObj;
+                    }),
+                    balance: x.balance,
+                  });
+                }
+                const obj = {
+                  uid: x.uid,
+                  nickname: targetUser.nickname,
+                  stock: x.stock.map((y) => {
+                    const stockName = Stock.find({ ticker: y.ticker }).then(
+                      (z) => z.name
+                    );
+                    const stockObj = {
+                      ticker: y.ticker,
+                      name: stockName,
+                      qty: y.qty,
+                      price: y.price,
+                      estimatedValue: y.estimatedValue,
+                    };
+                    return stockObj;
+                  }),
+                  balance: x.balance,
+                  remainingCash: x.remainingCash,
+                };
+                return obj;
+              });
+            });
+            user.save();
+            syncPortfolioToKoInv(uid).then(() => {});
+          });
+        });
+      });
+    }
+
+    // take action
+    // sync portfolio to korea invest
+  );
+};
+
+const subscribe = function (uid, targetUid, amount) {
+  // sync portfolio
+  syncPortfolioToKoInv(targetUid).then(() => {
+    User.findById(uid).then((user) => {
+      User.findById(targetUid).then((targetUser) => {
+        const promises = [],
+          subscription = {
+            uid: targetUid,
+            nickname: targetUser._id,
+            stock: [],
+            inputBalance: amount,
+            balance: amount,
+            remainingCash: 0,
+          },
+          subscriber = { uid: uid, stock: [], balance: amount };
+        let remainingCash = amount;
+        for (const ratio of targetUser.portfolioRatio) {
+          // decide how much to buy
+          const amt = parseInt(ratio.rate.toString()) * amount,
+            ticker = ratio.ticker;
+          Stock.findOne({ ticker: ticker }).then(({ marginRate, name }) => {
+            const price = targetUser.portfolio.findIndex((elem) => {
+              return (elem.ticker = ticker);
+            }).price;
+            const qty = parseInt((amt * (1 / (marginRate + 1))) / qty);
+
+            // buy stock and set remaining cash
+            promises.push(api.MarketBuy(ticker, qty));
+            remainingCash -= price * qty;
+
+            subscription.stock.push({
+              ticker: ticker,
+              name: name,
+              qty: qty,
+              price: price,
+              entryPrice: price,
+              estimatedValue: price * qty,
+              rateOfReturn: 1,
+            });
+            subscriber.stock.push([
+              {
+                ticker: ticker,
+                qty: qty,
+              },
+            ]);
+          });
+        }
+
+        subscription.remainingCash = remainingCash;
+
+        Promise.all(promises).then(() => {
+          // save
+          User.findByIdAndUpdate(uid, {
+            $push: { subscription: subscription },
+          });
+          User.findByIdAndUpdate(targetUid, {
+            $push: { subscriber: subscriber },
+          });
+        });
+      });
+    });
+  });
+};
+
+//Unsubscribe
+const unsubscribe = function (uid, targetUid) {
   User.findById(uid).then((user) => {
-    // get current stock data of owned stocks and subscriptions
-    syncPortfolioToKoInv(uid);
+    User.findById(targetUid).then((targetUser) => {
+      // sell stock
+      const api = new Client(
+        user.appkey,
+        user.appsecret,
+        user.accNumFront,
+        user.accNumBack,
+        { token: user.token, tokenExpiration: user.tokenExpiration }
+      );
 
-    // get margin rate of stocks
+      const idx = user.subscription.findIndex((sub) => {
+        return sub.uid === targetUid;
+      });
+      const sub = user.subscription[idx];
+      const promises = sub.stock.map((stock) => {
+        api.MarketSell(stock.ticker, stock.qty);
+      });
 
-    // calculate portfolio based on set portfolio ratio (consider )
+      Promise.all(promises).then((responses) => {
+        user.subscription.splice(idx, 1);
+        const targetIdx = targetUser.subscriber.findIndex((sub) => {
+          return sub.uid === uid;
+        });
+        targetUser.subscriber.splice(targetIdx, 1);
 
-    // buy/sell on calculated portfolio
+        user.save();
+        targetUser.save();
+
+        syncPortfolioToKoInv(uid).then(() => {
+          res.send({ msg: "Unsubscribed" });
+        });
+      });
+    });
   });
 };
 
 router.get("/", function (req, res) {
   res.send("Stock Base Domain");
-});
-
-router.get("/test", function ({ body: { uid } }, res) {
-  console.log("calling syncPortfolioToKoInv");
-  syncPortfolioToKoInv(uid).then(() => {
-    console.log("called syncPortfolioToKoInv");
-  });
 });
 
 // SearchStock
@@ -218,56 +490,16 @@ router.get("/IsSubscribed", function ({ body: { uid, targetUid } }, res) {
 });
 
 // ChangePortfolio
-router.post("/ChangePortfolio", function (req, res) {});
-
-//Subscribe
-router.post("/Subscribe", function ({ body: { uid, targetUid, amount } }) {
-  User.findById(uid).then((user) => {
-    User.findById(targerUid).then((targerUser) => {
-      // sync portfolio
-      syncPortfolioToKoInv(uid);
-      // buy stock and set remaining cash
-      // save
-    });
-  });
-});
-
-//Unsubscribe
-router.post("/Unsubscribe", function ({ body: { uid, targetUid } }) {
-  User.findById(uid).then((user) => {
-    User.findById(targetUid).then((targetUser) => {
-      // sell stock
-      const api = new Client(
-        user.appkey,
-        user.appsecret,
-        user.accNumFront,
-        user.accNumBack,
-        { token: user.token, tokenExpiration: user.tokenExpiration }
-      );
-
-      const idx = user.subscription.findIndex((sub) => {
-        return sub.uid === targetUid;
-      });
-      const sub = user.subscription[idx];
-      const promises = sub.stock.map((stock) => {
-        api.MarketSell(stock.ticker, stock.qty);
-      });
-
-      Promise.all(promises).then((responses) => {
-        user.subscription.splice(idx, 1);
-        const targetIdx = targetUser.subscriber.findIndex((sub) => {
-          return sub.uid === uid;
-        });
-        targetUser.subscriber.splice(targetIdx, 1);
-
-        user.save();
-        targetUser.save();
-
-        syncPortfolioToKoInv(uid);
-      });
-    });
-  });
-});
+router.post(
+  "/ChangePortfolio",
+  function ({ body: { uid, newPortfolioRatio } }, res) {
+    // sync portfolio to korea invest
+    // identify what stocks and subscriptions are included in old and new portfolio using set
+    // get user
+    // calculate what action needs to be taken
+    // take action
+  }
+);
 
 //AddStock
 router.post("/AddStock", function ({ body: { stocks } }, res) {
