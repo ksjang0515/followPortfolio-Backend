@@ -8,6 +8,7 @@ router.get("/", function (req, res) {
   res.send("User Base Domain");
 });
 
+//FollowingList
 router.get("/FollowingList", function ({ body: { uid } }, res) {
   User.findById(uid).then((user) => {
     res.send({ followingList: user.following });
@@ -91,7 +92,10 @@ router.get("/UserInfo", function ({ body: { uid } }, res) {
           description: user.description,
           portfolio: user.portfolio,
           rateOfReturn: user.rateOfReturn,
-          followerNum: user.follower.length,
+          totalFollower: user.follower.length,
+          totalSubscriber: user.subscribers.length,
+          totalBalance: user.totalBalance,
+          portfolioRatio: user.portfolioRatio,
         });
     })
     .catch((err) => res.status(500).send(err));
@@ -188,7 +192,9 @@ router.post(
     api.balance("01").then((response) => {
       const totalBalance = response.body.output2[0].tot_evlu_amt,
         rateOfReturn = response.body.output2[0].asst_icdc_erng_rt,
-        portfolio = [];
+        portfolio = [],
+        portfolioRatio = [],
+        remainingCash = totalBalance;
       const token = api.options.token,
         tokenExpiration = api.options.tokenExpiration;
 
@@ -198,8 +204,15 @@ router.post(
           ticker: stock.pdno,
           name: stock.prdt_name,
           qty: stock.hldg_qty,
-          entryPrice: stock.pchs_avg_pric,
+          estimatedValue: stock.evlu_amt,
+          rateOfReturn: stock.evlu_erng_rt,
         });
+        portfolioRatio.push({
+          identifier: stock.pdno,
+          ratio: stock.evlu_amt / totalBalance,
+          type: "stock",
+        });
+        remainingCash -= stock.evlu_amt;
       }
 
       User.create({
@@ -210,6 +223,8 @@ router.post(
         accNumFront,
         accNumBack,
         portfolio,
+        portfolioRatio,
+        remainingCash,
         totalBalance,
         rateOfReturn,
         token,
