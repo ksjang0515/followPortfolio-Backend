@@ -240,10 +240,15 @@ router.get("/", function (req, res) {
 // SearchStock
 router.get("/SearchStock", function ({ body: { name } }, res) {
   Stock.find({
-    $or: [{ name: { $regex: name } }, { ticker: { $regex: name } }],
-  }).then((stocks) => {
-    res.send({ stocks });
-  });
+    $or: [
+      { name: new RegExp(`^${name}`, "i") },
+      { ticker: new RegExp(`^${name}`) },
+    ],
+  })
+    .limit(10)
+    .then((stocks) => {
+      res.send({ stocks });
+    });
 });
 
 // Portfolio
@@ -333,7 +338,7 @@ router.post(
 );
 
 //AddStock
-router.post("/AddStock", function ({ body: stocks }, res) {
+router.post("/AddStock", function ({ body: { stocks } }, res) {
   for (const stock of stocks)
     Stock.create({ ticker: stock.ticker, name: stock.name });
 
