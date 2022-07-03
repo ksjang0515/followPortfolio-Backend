@@ -81,6 +81,7 @@ router.get("/RecommendUser", function ({ body: { type } }, res) {
 });
 
 // UserInfo
+// TODO - 동기화 주기 추가
 router.get("/UserInfo", function ({ body: { uid } }, res) {
   User.findById(uid)
     .then((user) => {
@@ -193,8 +194,8 @@ router.post(
       const totalBalance = response.body.output2[0].tot_evlu_amt,
         rateOfReturn = response.body.output2[0].asst_icdc_erng_rt,
         portfolio = [],
-        portfolioRatio = [],
-        remainingCash = totalBalance;
+        portfolioRatio = [];
+      let remainingCash = totalBalance;
       const token = api.options.token,
         tokenExpiration = api.options.tokenExpiration;
 
@@ -209,11 +210,23 @@ router.post(
         });
         portfolioRatio.push({
           identifier: stock.pdno,
-          ratio: stock.evlu_amt / totalBalance,
-          type: "stock",
+          ratio: (stock.evlu_amt / totalBalance).toFixed(3),
+          ratioType: "stock",
         });
         remainingCash -= stock.evlu_amt;
       }
+      portfolio.push({
+        ticker: "000000",
+        name: "Deposit",
+        qty: remainingCash,
+        estimatedValue: remainingCash,
+        rateOfReturn: 1,
+      });
+      portfolioRatio.push({
+        identifier: "000000",
+        ratio: remainingCash / totalBalance,
+        ratioType: "stock",
+      });
 
       User.create({
         nickname,

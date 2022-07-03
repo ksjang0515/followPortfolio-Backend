@@ -242,7 +242,7 @@ router.get("/SearchStock", function ({ body: { name } }, res) {
   Stock.find({
     $or: [
       { name: new RegExp(`^${name}`, "i") },
-      { ticker: new RegExp(`^${name}`) },
+      { ticker: new RegExp(`^${name}`, "i") },
     ],
   })
     .limit(10)
@@ -251,7 +251,8 @@ router.get("/SearchStock", function ({ body: { name } }, res) {
     });
 });
 
-// Portfolio
+// Portfolio - 종목별 - 종목명, 지분율, 수익률
+// 총자산, 전체 수익률
 router.get("/Portfolio", function ({ body: { uid } }, res) {
   User.findById(uid).then((user) => {
     const api = new Client(
@@ -264,9 +265,7 @@ router.get("/Portfolio", function ({ body: { uid } }, res) {
     api.balance("01").then((response) => {
       const portfolio = {};
 
-      for (let i = 0; i < response.body.output1.length; i++) {
-        const elem = response.body.output1[i];
-
+      for (const elem of response.body.output1) {
         portfolio[elem.pdno] = {
           name: elem.prdt_name,
           price: elem.prpr,
@@ -276,14 +275,13 @@ router.get("/Portfolio", function ({ body: { uid } }, res) {
       }
 
       portfolio["deposit"] = {
-        name: "deposit",
+        name: "예치금",
         price: 1,
-        estimatedValue: response.output[0].prvs_rcdl_excc_amt,
+        estimatedValue: response.body.output2[0].prvs_rcdl_excc_amt,
         rateOfReturn: 1,
       };
 
-      for (let i = 0; i < user.subscription.length; i++) {
-        const elem = user.subscription[i];
+      for (const elem of user.subscription) {
         let estimatedValue = 0;
         for (let j = 0; j < elem.stock.length; j++) {
           const stock = elem.stock[j];
@@ -307,7 +305,7 @@ router.get("/Portfolio", function ({ body: { uid } }, res) {
 
       res.send({
         portfolio: Object.values(portfolio),
-        totalBalance: response.tot_evlu_amt,
+        totalBalance: response.body.output2[0].tot_evlu_amt,
       });
     });
   });
@@ -343,6 +341,10 @@ router.post("/AddStock", function ({ body: { stocks } }, res) {
     Stock.create({ ticker: stock.ticker, name: stock.name });
 
   res.send({ msg: `${stocks.length} stocks has been added` });
+});
+
+router.get("/test", function ({ body: { uid } }, res) {
+  syncPortfolioToKoInv(uid).then(() => res.send({ msg: "Done" }));
 });
 
 export default router;
