@@ -2,7 +2,7 @@ This is for a quick demo and is not fit for commercial use.
 
 There are ton of ways that could cause bug and it is not efficient.
 
-Also it would make more sense to put uid on headers.
+Also it would make more sense to put uid on headers andd add access token and restriction.
 
 Some endpoint is not included in description below, since it will not be used in prototype
 
