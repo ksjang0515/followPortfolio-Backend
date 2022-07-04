@@ -7,6 +7,7 @@ const router = express.Router();
 
 const syncPortfolioToKoInv = async function (uid) {
   User.findById(uid).then((user) => {
+    if (!user) return;
     const api = new Client(
       user.appkey,
       user.appsecret,
@@ -14,15 +15,12 @@ const syncPortfolioToKoInv = async function (uid) {
       user.accNumBack,
       { token: user.token, tokenExpiration: user.tokenExpiration }
     );
-    console.log("send response");
     api.balance("01").then((response) => {
-      console.log("response acquired");
-
-      for (const portfolio in user.portfolio) {
-        for (const elem in response.body.output1) {
+      for (const portfolio of user.portfolio) {
+        for (const elem of response.body.output1) {
           if (elem.pdno === portfolio.ticker) {
             Object.assign(portfolio, {
-              price: elem.prpr,
+              qty: elem.hldg_qty,
               estimatedValue: elem.evlu_amt,
               rateOfReturn: elem.evlu_pfls_rt,
             });
@@ -32,12 +30,12 @@ const syncPortfolioToKoInv = async function (uid) {
       }
 
       // 예수금
-      user.remainingCash = response.body.output2[0].prvs_rcdl_excc_amt;
+      let remainingCash = response.body.output2[0].prvs_rcdl_excc_amt;
 
       // Subscription마다 주식 잔고와 예수금 제외 및 subscription 정보로 저장
       for (const elem of user.subscription) {
         elem.balance = elem.remainingCash;
-        user.remainingCash -= elem.remainingCash; //Subscription 예수금과 일반 예수금 따로 관리
+        remainingCash -= elem.remainingCash; //Subscription 예수금과 일반 예수금 따로 관리
 
         for (const stock of elem.stock) {
           const portfolioObj = user.portfolio.find(
@@ -55,6 +53,12 @@ const syncPortfolioToKoInv = async function (uid) {
           elem.balance += stock.estimatedValue;
         }
       }
+
+      const deposit = user.portfolio.find((x) => x.ticker === "000000");
+      Object.assign(deposit, {
+        qty: remainingCash,
+        estimatedValue: remainingCash,
+      });
 
       // 바꾼 정보를 DB에 저장
       user.save();
@@ -77,7 +81,7 @@ const syncPortfolioToRatio = async function (uid, newPortfolioRatio = null) {
   User.findById(uid).then((user) => {
     // get current raw portfolio(made of only stocks and not subscriptions)
     // from korea Invest
-    if (!newPortfolioRatio) newPortfolioRation = user.portfolioRatio;
+    if (!newPortfolioRatio) newPortfolioRatio = user.portfolioRatio;
 
     const api = new Client(
       user.appkey,
@@ -98,20 +102,21 @@ const syncPortfolioToRatio = async function (uid, newPortfolioRatio = null) {
       const newRawPortfolio = {}, // qty
         newSubscription = [];
       for (const elem of newPortfolioRatio) {
-        if (elem.type === "stock") {
+        if (elem.ratioType === "stock") {
           const priceNMarginRate = getPriceNMarginRate(api, elem.identifier);
           newRawPortfolio[elem.identifier] = newRawPortfolio[elem.identifier]
             ? newRawPortfolio[elem.identifier] +
               calQty(totalBalance * elem.ratio, priceNMarginRate)
             : calQty(totalBalance * elem.ratio, priceNMarginRate);
-        } else if (elem.type === "subscription") {
+        } else if (elem.ratioType === "subscription") {
           const subBalance = totalBalance * elem.ratio,
             obj = {
               uid: elem.identifier,
               stock: [],
               balance: subBalance,
-              remainingCash: subBalance,
             };
+
+          let remainingCash = subBalance;
           User.findById(obj.uid).then((targetUser) => {
             // get portfolio ratio of target user
             for (const stockRatio of targetUser.portfolioRatio) {
@@ -134,11 +139,17 @@ const syncPortfolioToRatio = async function (uid, newPortfolioRatio = null) {
                     ? newRawPortfolio[stockObj.ticker] + stockObj.qty
                     : stockObj.qty;
 
-                  obj.remainingCash -= stockObj.balance;
+                  remainingCash -= stockObj.balance;
                   obj.stock.push(stockObj);
                 }
               );
             }
+            obj.stock.push({
+              ticker: "000000",
+              name: "예치금",
+              qty: remainingCash,
+              estimatedValue: remainingCash,
+            });
           });
           newSubscription.push(obj);
         }
@@ -179,7 +190,9 @@ const syncPortfolioToRatio = async function (uid, newPortfolioRatio = null) {
         Promise.all(buyPromises).then(() => {
           user.subscription = newSubscription.map((x) => {
             return User.findById(x.uid).then((targetUser) => {
-              const subscriber = targetUser.follower.find((y) => y.uid === uid);
+              const subscriber = targetUser.subscriber.find(
+                (y) => y.uid === uid
+              );
               if (subscriber) {
                 subscriber.stock = x.stock.map((y) => {
                   const stockObj = {
@@ -202,6 +215,8 @@ const syncPortfolioToRatio = async function (uid, newPortfolioRatio = null) {
                   balance: x.balance,
                 });
               }
+              targetUser.save();
+
               const obj = {
                 uid: x.uid,
                 nickname: targetUser.nickname,
@@ -218,12 +233,15 @@ const syncPortfolioToRatio = async function (uid, newPortfolioRatio = null) {
                   };
                   return stockObj;
                 }),
+                inputBalance: x.balance,
                 balance: x.balance,
-                remainingCash: x.remainingCash,
               };
               return obj;
             });
           });
+          user.lastSynced = new Date();
+          user.portfolioRatio = newPortfolioRatio;
+
           user.save();
           syncPortfolioToKoInv(uid);
         });
@@ -254,58 +272,29 @@ router.get("/SearchStock", function ({ body: { name } }, res) {
 // Portfolio - 종목별 - 종목명, 지분율, 수익률
 // 총자산, 전체 수익률
 router.get("/Portfolio", function ({ body: { uid } }, res) {
-  User.findById(uid).then((user) => {
-    const api = new Client(
-      user.appkey,
-      user.appsecret,
-      user.accNumFront,
-      user.accNumBack,
-      { token: user.token, tokenExpiration: user.tokenExpiration }
-    );
-    api.balance("01").then((response) => {
-      const portfolio = {};
+  syncPortfolioToKoInv(uid).then(() => {
+    User.findById(uid).then((user) => {
+      const portfolio = [];
 
-      for (const elem of response.body.output1) {
-        portfolio[elem.pdno] = {
-          name: elem.prdt_name,
-          price: elem.prpr,
-          estimatedValue: elem.evlu_amt,
-          rateOfReturn: elem.evlu_pfls_rt,
-        };
+      for (const x of user.portfolio) {
+        portfolio.push({
+          name: x.name,
+          ratio: x.estimatedValue / user.totalBalance,
+          rateOfReturn: x.rateOfReturn,
+        });
       }
 
-      portfolio["deposit"] = {
-        name: "예치금",
-        price: 1,
-        estimatedValue: response.body.output2[0].prvs_rcdl_excc_amt,
-        rateOfReturn: 1,
-      };
-
-      for (const elem of user.subscription) {
-        let estimatedValue = 0;
-        for (let j = 0; j < elem.stock.length; j++) {
-          const stock = elem.stock[j];
-
-          const ticker = stock.ticker,
-            price = portfolio[ticker].price,
-            qty = portfolio[ticker].qty;
-
-          portfolio[ticker].estimatedValue -= price * qty;
-          estimatedValue += price * qty;
-        }
-        portfolio["balance"] -= elem.remainingCash;
-        estimatedValue += elem.remainingCash;
-
-        portfolio[user.nickname] = {
-          name: user.nickname,
-          estimatedValue,
-          rateOfReturn: estimatedValue / elem.balance,
-        };
-      }
+      for (const x of user.subscription)
+        portfolio.push({
+          name: x.nickname,
+          ratio: x.balance / user.totalBalance,
+          rateOfReturn: x.balance / x.inputBalance,
+        });
 
       res.send({
-        portfolio: Object.values(portfolio),
-        totalBalance: response.body.output2[0].tot_evlu_amt,
+        portfolio: portfolio,
+        totalBalance: user.totalBalance,
+        rateOfReturn: user.rateOfReturn,
       });
     });
   });
@@ -316,8 +305,8 @@ router.get("/IsSubscribed", function ({ body: { uid, targetUid } }, res) {
   User.findById(uid).then((user) => {
     if (!user) res.status(500).send({ msg: "User not found" });
 
-    for (let i = 0; i < user.subscription.length; i++) {
-      if (user.subscription[i].uid === targetUid) {
+    for (const subscription of user.subscription) {
+      if (subscription.uid === targetUid) {
         res.send({ isSubscribed: true });
         return;
       }

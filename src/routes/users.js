@@ -65,18 +65,18 @@ router.get("/RecommendUser", function ({ body: { type } }, res) {
       return;
     }
 
-    res.send(
-      users.slice(0, 10).map((user) => {
-        return {
-          uid: user._id,
-          nickname: user.nickname,
-          description: user.description,
-          portfolio: user.portfolio,
-          rateOfReturn: parseFloat(user.rateOfReturn.toString()),
-          followerNum: user.follower.length,
-        };
-      })
-    );
+    const recommendList = users.slice(0, 10).map((user) => {
+      return {
+        uid: user._id,
+        nickname: user.nickname,
+        description: user.description,
+        portfolio: user.portfolio,
+        rateOfReturn: user.rateOfReturn,
+        followerNum: user.follower.length,
+      };
+    });
+
+    res.send({ recommendation: recommendList });
   });
 });
 
@@ -192,15 +192,10 @@ router.post(
 
     api.balance("01").then((response) => {
       const totalBalance = response.body.output2[0].tot_evlu_amt,
-        rateOfReturn = response.body.output2[0].asst_icdc_erng_rt,
         portfolio = [],
         portfolioRatio = [];
-      let remainingCash = totalBalance;
-      const token = api.options.token,
-        tokenExpiration = api.options.tokenExpiration;
 
-      for (let i = 0; i < response.body.output1.length; i++) {
-        const stock = response.body.output1[i];
+      for (const stock of response.body.output1) {
         portfolio.push({
           ticker: stock.pdno,
           name: stock.prdt_name,
@@ -213,18 +208,19 @@ router.post(
           ratio: (stock.evlu_amt / totalBalance).toFixed(3),
           ratioType: "stock",
         });
-        remainingCash -= stock.evlu_amt;
       }
+
+      const remainingCash = response.body.output2[0].prvs_rcdl_excc_amt;
       portfolio.push({
         ticker: "000000",
-        name: "Deposit",
+        name: "예치금",
         qty: remainingCash,
         estimatedValue: remainingCash,
         rateOfReturn: 1,
       });
       portfolioRatio.push({
         identifier: "000000",
-        ratio: remainingCash / totalBalance,
+        ratio: (remainingCash / totalBalance).toFixed(3),
         ratioType: "stock",
       });
 
@@ -239,9 +235,9 @@ router.post(
         portfolioRatio,
         remainingCash,
         totalBalance,
-        rateOfReturn,
-        token,
-        tokenExpiration,
+        rateOfReturn: response.body.output2[0].asst_icdc_erng_rt,
+        token: api.options.token,
+        tokenExpiration: api.options.tokenExpiration,
       }).then((user) => res.send({ msg: "Added new User", user }));
     });
   }
@@ -254,7 +250,7 @@ router.delete("/RemoveUser", function ({ body: { uid } }, res) {
       if (!user) res.status(404).send({ error: "User not found" });
       else res.send({ msg: "Removed user", user });
     })
-    .catch((err) => res.status(500).send(err));
+    .catch((err) => res.status(500).send({ error: err }));
 });
 
 export default router;

@@ -24,7 +24,6 @@ const userSchema = new mongoose.Schema({
       ],
       inputBalance: Number,
       balance: Number,
-      remainingCash: Number,
     },
   ],
   subscriber: [
@@ -50,8 +49,8 @@ const userSchema = new mongoose.Schema({
       ratioType: String,
     },
   ],
-  remainingCash: Number,
   syncPeriod: { type: Number, default: 1 },
+  lastSynced: Date,
   totalBalance: Number,
   rateOfReturn: String,
   token: String,
