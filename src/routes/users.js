@@ -5,7 +5,7 @@ import Client from "../api/koInvTokenUpdate.js";
 const router = express.Router();
 
 router.get("/", function (req, res) {
-  res.send("User Base Domain");
+  res.send({ msg: "User Base Domain" });
 });
 
 //FollowingList
@@ -81,7 +81,6 @@ router.get("/RecommendUser", function ({ body: { type } }, res) {
 });
 
 // UserInfo
-// TODO - 동기화 주기 추가
 router.get("/UserInfo", function ({ body: { uid } }, res) {
   User.findById(uid)
     .then((user) => {
@@ -92,11 +91,12 @@ router.get("/UserInfo", function ({ body: { uid } }, res) {
           nickname: user.nickname,
           description: user.description,
           portfolio: user.portfolio,
-          rateOfReturn: user.rateOfReturn,
           totalFollower: user.follower.length,
           totalSubscriber: user.subscribers.length,
-          totalBalance: user.totalBalance,
           portfolioRatio: user.portfolioRatio,
+          syncPeriod: user.syncPeriod,
+          totalBalance: user.totalBalance,
+          rateOfReturn: user.rateOfReturn,
         });
     })
     .catch((err) => res.status(500).send(err));
