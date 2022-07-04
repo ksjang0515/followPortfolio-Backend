@@ -2,19 +2,19 @@ This is for a quick demo and is not fit for commercial use.
 
 There are ton of ways that could cause bug and it is not efficient.
 
-Also it would make more sense to put uid on headers
+Also it would make more sense to put uid on headers.
+
+Some endpoint is not included in description below, since it will not be used in prototype
 
 
 
-Endpoints
+User Endpoints
 =========
 
 ## Test Users Endpoint Connection
 ---
 Used for testing connection to users endpoint
 > GET /users/
-
-
 
 **Parameters:** NONE
 
@@ -47,6 +47,7 @@ Get list of users user is following
 |:---|:---|:---|
 |followingList|Array|Array of object containing uid|
 |- uid|String|Uid of following user|
+
 ```javascript
 {
   followingList: [
@@ -72,6 +73,7 @@ Get sync period of user
 |Name|Type|Description|
 |:---|:---|:---|
 |syncPeriod|Number|Sync period of user|
+
 ```javascript
 {
   syncPeriod:
@@ -95,6 +97,7 @@ Get description of user
 |Name|Type|Description|
 |:---|:---|:---|
 |description|String|Desctiption of user|
+
 ```javascript
 {
   description:
@@ -120,6 +123,7 @@ Get list of stocks that user is following
 |followingStock|Array|Array of object containing ticker and name|
 |- ticker|String|Ticker symbol of stock|
 |- name|String|Name of stock|
+
 ```javascript
 {
   followingStock: [
@@ -159,6 +163,7 @@ Get list of recommended users
 |--- rateOfReturn|||
 |- rateOfReturn|String|Rate of return of user's portfolio|
 |- totalFollower|Number|Number of followers|
+
 ```javascript
 {
   uid: ,
@@ -206,7 +211,12 @@ Get
 |totalFollower|Number|Number of followers|
 |totalSubscriber|Number|Number of subscribers|
 |portfolioRatio|Array||
+|- identifier|String|Either ticker or uid depending on ratioType|
+|- ratio|String||
+|- ratioType|String|"stock" or "subscription"|
+|totalBalance|Number|Total estimated value of user's portfolio<br>(subscription included)|
 |rateOfReturn|String|Rate of return of user's portfolio|
+
 ```javascript
 {
   uid: ,
@@ -221,6 +231,15 @@ Get
       rateOfReturn: ,
     },
   ],
+  totalFollower: ,
+  totalSubscriber: ,
+  portfolioRatio: [
+    {
+      identifier: ,
+      ratio: ,
+      ratioType: ,
+    }
+  ]
   rateOfReturn: ,
   followerNum: ,
 }
@@ -228,11 +247,164 @@ Get
 
 <br>
 
-## Get Sync Period
+## Get User is Following Target User
 ---
-Get sync period of user
+Get whether user is following target user
 
-> GET /users/SyncPeriod
+> GET /users/isFollowing
+
+**Parameters:**
+|Name|Type|Description|
+|:---|:---|:---|
+|uid|String|Uid of user|
+|targetUid|String|Uid of target user|
+
+**Response:**
+|Name|Type|Description|
+|:---|:---|:---|
+|isFollowing|Boolean||
+
+```javascript
+{
+  isFollowing: true,
+}
+```
+
+<br>
+
+## Change Sync Period of User
+---
+Change Sync Period of User
+
+> POST /users/ChangeSyncPeriod
+
+**Parameters:**
+|Name|Type|Description|
+|:---|:---|:---|
+|uid|String|Uid of user|
+|newPeriod|Number|New period to set|
+
+**Response:**
+|Name|Type|Description|
+|:---|:---|:---|
+|msg|String|"Successfully updated syncPeriod"|
+
+```javascript
+{
+  msg: "Successfully updated syncPeriod",
+}
+```
+
+<br>
+
+## Change Description of User
+---
+Change Description of User
+
+> POST /users/ChangeDescription
+
+**Parameters:**
+|Name|Type|Description|
+|:---|:---|:---|
+|uid|String|Uid of user|
+|newDescription|String|New description to set|
+
+**Response:**
+|Name|Type|Description|
+|:---|:---|:---|
+|msg|String|"Successfully updated description"|
+
+```javascript
+{
+  msg: "Successfully updated description",
+}
+```
+
+<br>
+
+## Toggle Following
+---
+Change whether user is following another target user
+
+> POST /users/ToggleFollowing
+
+**Parameters:**
+|Name|Type|Description|
+|:---|:---|:---|
+|uid|String|Uid of user|
+|targetUid|String|Uid of target user|
+
+**Response:**
+|Name|Type|Description|
+|:---|:---|:---|
+|msg|String|"Followed User" or "Unfollowed User"|
+
+```javascript
+{
+  msg: "Followed User",
+}
+```
+
+Stock Endpoints
+=========
+
+## Test Stocks Endpoint Connection
+---
+Used for testing connection to stocks endpoint
+
+> GET /stocks/
+
+**Parameters:** None
+
+**Response:**
+|Name|Type|Description|
+|:---|:---|:---|
+|msg|String|"Stock Base Domain"|
+
+```javascript
+{
+  msg: "Stock Base Domain",
+}
+```
+
+<br>
+
+## Search Stock
+---
+Returns 10 similar stocks based on passed name
+
+> GET /stocks/SearchStock
+
+**Parameters:**
+|Name|Type|Description|
+|:---|:---|:---|
+|name|String|Name or ticker of stock|
+
+**Response:**
+|Name|Type|Description|
+|:---|:---|:---|
+|stocks|Array|Array of objects containing ticker and name<br>Contains 10 objects|
+|- ticker|String|Ticker symbol of stock|
+|- name|String|Name of stock|
+
+```javascript
+{
+  stocks: [
+    {
+      ticker: ,
+      name: ,
+    },
+  ],
+}
+```
+
+<br>
+
+## Get Portfolio of User
+---
+Returns portfolio of given user
+
+> GET /stocks/Portfolio
 
 **Parameters:**
 |Name|Type|Description|
@@ -242,9 +414,72 @@ Get sync period of user
 **Response:**
 |Name|Type|Description|
 |:---|:---|:---|
-|syncPeriod|Number|Sync period of user|
+|portfolio|Array|Array of objects containing name, ratio, and rateOfReturn|
+|- name|String|Name of asset<br>(asset could be either stock or subscription)|
+|- ratio|String|Ratio of asset in portfolio|
+|- rateOfReturn|String|Rate of return of asset|
+|totalBalance|Number|Total estimated value of user's portfolio|
+|rateOfReturn|String|Rate of return of user's portfolio|
+
 ```javascript
 {
-  syncPeriod:
+  portfolio: [
+    {
+      name: ,
+      ratio: ,
+      rateOfReturn: ,
+    },
+  ],
+  totalBalance: ,
+  rateOfReturn: ,
+}
+```
+
+<br>
+
+## Get Whether User is Subscribed to Target User
+---
+Returns whether user is subscribed to target user
+
+> GET /stocks/IsSubscribed
+
+**Parameters:**
+|Name|Type|Description|
+|:---|:---|:---|
+|uid|String|Uid of user|
+|targetUid|String|Uid of target user|
+
+**Response:**
+|Name|Type|Description|
+|:---|:---|:---|
+|isSubscribed|Boolean||
+
+```javascript
+{
+  isSubscribed: true,
+}
+```
+
+<br>
+
+## Sync Portfolio to Ratio
+---
+Redistrict stock / subscription to given ratio or pervious ratio
+
+> GET /stocks/SyncPortfolio
+
+**Parameters:**
+|Name|Type|Description|
+|:---|:---|:---|
+|uid|String|Uid of user|
+|newPortfolioRatio|Array|Array of objects containing identifier, ratio, and ratioType|
+|- identifier|String|Ticker symbol or uid of ratio<br>Depends on ratioType|
+|- ratio|String||
+|- ratioType|String|"stock" or "subscription"|
+
+**Response:** None
+```
+{
+
 }
 ```

@@ -72,7 +72,7 @@ router.get("/RecommendUser", function ({ body: { type } }, res) {
         description: user.description,
         portfolio: user.portfolio,
         rateOfReturn: user.rateOfReturn,
-        followerNum: user.follower.length,
+        totalFollower: user.follower.length,
       };
     });
 

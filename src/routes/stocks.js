@@ -252,7 +252,7 @@ const syncPortfolioToRatio = async function (uid, newPortfolioRatio = null) {
 
 //Base Domain
 router.get("/", function (req, res) {
-  res.send("Stock Base Domain");
+  res.send({ msg: "Stock Base Domain" });
 });
 
 // SearchStock
