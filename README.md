@@ -203,11 +203,11 @@ Get
 |nickname|String|Nickname of user|
 |description|String|Description of user|
 |portfolio|Array|Array of object containing stocks owned by user|
-|- ticker|||
-|- name|||
-|- qty|||
-|- estimatedValue|||
-|- rateOfReturn|||
+|- ticker|String||
+|- name|String||
+|- qty|Number||
+|- estimatedValue|Number||
+|- rateOfReturn|Stromg||
 |totalFollower|Number|Number of followers|
 |totalSubscriber|Number|Number of subscribers|
 |portfolioRatio|Array||
@@ -466,7 +466,7 @@ Returns whether user is subscribed to target user
 ---
 Redistrict stock / subscription to given ratio or pervious ratio
 
-> GET /stocks/SyncPortfolio
+> POST /stocks/SyncPortfolio
 
 **Parameters:**
 |Name|Type|Description|
@@ -478,6 +478,7 @@ Redistrict stock / subscription to given ratio or pervious ratio
 |- ratioType|String|"stock" or "subscription"|
 
 **Response:** None
+
 ```
 {
 
