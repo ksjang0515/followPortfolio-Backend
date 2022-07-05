@@ -12,7 +12,7 @@ User Endpoints
 =========
 
 ## Test Users Endpoint Connection
----
+
 Used for testing connection to users endpoint
 > GET /users/
 
@@ -32,7 +32,7 @@ Used for testing connection to users endpoint
 <br>
 
 ## Following List
----
+
 Get list of users user is following
 
 > GET /users/FollowingList
@@ -59,7 +59,7 @@ Get list of users user is following
 <br>
 
 ## Get Sync Period
----
+
 Get sync period of user
 
 > GET /users/SyncPeriod
@@ -83,7 +83,7 @@ Get sync period of user
 <br>
 
 ## Get Description
----
+
 Get description of user
 
 > GET /users/Description
@@ -107,7 +107,7 @@ Get description of user
 <br>
 
 ## Get List of Following Stocks
----
+
 Get list of stocks that user is following
 
 > GET /users/FollowingListStock
@@ -138,7 +138,7 @@ Get list of stocks that user is following
 <br>
 
 ## Get User Recommendations
----
+
 Get list of recommended users
 
 > GET /users/RecommendUser
@@ -186,7 +186,7 @@ Get list of recommended users
 <br>
 
 ## Get User Information
----
+
 Get 
 
 > GET /users/UserInfo
@@ -248,7 +248,7 @@ Get
 <br>
 
 ## Get User is Following Target User
----
+
 Get whether user is following target user
 
 > GET /users/isFollowing
@@ -273,7 +273,7 @@ Get whether user is following target user
 <br>
 
 ## Change Sync Period of User
----
+
 Change Sync Period of User
 
 > POST /users/ChangeSyncPeriod
@@ -298,7 +298,7 @@ Change Sync Period of User
 <br>
 
 ## Change Description of User
----
+
 Change Description of User
 
 > POST /users/ChangeDescription
@@ -323,7 +323,7 @@ Change Description of User
 <br>
 
 ## Toggle Following
----
+
 Change whether user is following another target user
 
 > POST /users/ToggleFollowing
@@ -349,7 +349,7 @@ Stock Endpoints
 =========
 
 ## Test Stocks Endpoint Connection
----
+
 Used for testing connection to stocks endpoint
 
 > GET /stocks/
@@ -370,7 +370,7 @@ Used for testing connection to stocks endpoint
 <br>
 
 ## Search Stock
----
+
 Returns 10 similar stocks based on passed name
 
 > GET /stocks/SearchStock
@@ -401,7 +401,7 @@ Returns 10 similar stocks based on passed name
 <br>
 
 ## Get Portfolio of User
----
+
 Returns portfolio of given user
 
 > GET /stocks/Portfolio
@@ -438,7 +438,7 @@ Returns portfolio of given user
 <br>
 
 ## Get Whether User is Subscribed to Target User
----
+
 Returns whether user is subscribed to target user
 
 > GET /stocks/IsSubscribed
@@ -463,7 +463,7 @@ Returns whether user is subscribed to target user
 <br>
 
 ## Sync Portfolio to Ratio
----
+
 Redistrict stock / subscription to given ratio or pervious ratio
 
 > POST /stocks/SyncPortfolio

@@ -9,21 +9,21 @@ router.get("/", function (req, res) {
 });
 
 //FollowingList
-router.get("/FollowingList", function ({ body: { uid } }, res) {
+router.get("/FollowingList", function ({ query: { uid } }, res) {
   User.findById(uid).then((user) => {
     res.send({ followingList: user.following });
   });
 });
 
 // SyncPeriod
-router.get("/SyncPeriod", function ({ body: { uid } }, res) {
+router.get("/SyncPeriod", function ({ query: { uid } }, res) {
   User.findById(uid).then((user) => {
     res.send({ syncPeriod: user.syncPeriod });
   });
 });
 
 // Description
-router.get("/Description", function ({ body: { uid } }, res) {
+router.get("/Description", function ({ query: { uid } }, res) {
   User.findById(uid)
     .then((user) => {
       if (!user) res.status(404).send({ error: "User not found" });
@@ -33,14 +33,14 @@ router.get("/Description", function ({ body: { uid } }, res) {
 });
 
 // FollowingListStock
-router.get("/FollowingListStock", function ({ body: { uid } }, res) {
+router.get("/FollowingListStock", function ({ query: { uid } }, res) {
   User.findById(uid).then((user) => {
     res.send({ followingStock: user.followingStock });
   });
 });
 
 // RecommendUser
-router.get("/RecommendUser", function ({ body: { type } }, res) {
+router.get("/RecommendUser", function ({ query: { type } }, res) {
   User.find({}).then((users) => {
     if (type === "follower") {
       users.sort((a, b) => {
@@ -81,29 +81,38 @@ router.get("/RecommendUser", function ({ body: { type } }, res) {
 });
 
 // UserInfo
-router.get("/UserInfo", function ({ body: { uid } }, res) {
+router.get("/UserInfo", function ({ query: { uid } }, res) {
+  if (!uid) {
+    res.send({ msg: "uid sent was empty" });
+    return;
+  }
+
+  console.log(uid);
+
   User.findById(uid)
     .then((user) => {
       if (!user) res.status(404).send({ error: "User not found" });
       else
         res.send({
-          uid: user._id,
+          uid: user.id.toString(),
           nickname: user.nickname,
           description: user.description,
           portfolio: user.portfolio,
           totalFollower: user.follower.length,
-          totalSubscriber: user.subscribers.length,
+          totalSubscriber: user.subscriber.length,
           portfolioRatio: user.portfolioRatio,
           syncPeriod: user.syncPeriod,
           totalBalance: user.totalBalance,
           rateOfReturn: user.rateOfReturn,
         });
     })
-    .catch((err) => res.status(500).send(err));
+    .catch((err) => {
+      res.status(500).send(err);
+    });
 });
 
 // isFollowing
-router.get("/isFollowing", function ({ body: { uid, targetUid } }, res) {
+router.get("/isFollowing", function ({ query: { uid, targetUid } }, res) {
   User.findById(uid).then((user) => {
     let flag = false;
     for (let i = 0; i < user.following.length; i++)

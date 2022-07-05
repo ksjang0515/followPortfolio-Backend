@@ -256,7 +256,7 @@ router.get("/", function (req, res) {
 });
 
 // SearchStock
-router.get("/SearchStock", function ({ body: { name } }, res) {
+router.get("/SearchStock", function ({ query: { name } }, res) {
   Stock.find({
     $or: [
       { name: new RegExp(`^${name}`, "i") },
@@ -271,7 +271,7 @@ router.get("/SearchStock", function ({ body: { name } }, res) {
 
 // Portfolio - 종목별 - 종목명, 지분율, 수익률
 // 총자산, 전체 수익률
-router.get("/Portfolio", function ({ body: { uid } }, res) {
+router.get("/Portfolio", function ({ query: { uid } }, res) {
   syncPortfolioToKoInv(uid).then(() => {
     User.findById(uid).then((user) => {
       const portfolio = [];
@@ -301,7 +301,7 @@ router.get("/Portfolio", function ({ body: { uid } }, res) {
 });
 
 //IsSubscribed
-router.get("/IsSubscribed", function ({ body: { uid, targetUid } }, res) {
+router.get("/IsSubscribed", function ({ query: { uid, targetUid } }, res) {
   User.findById(uid).then((user) => {
     if (!user) res.status(500).send({ msg: "User not found" });
 
