@@ -128,14 +128,7 @@ router.get("/RecommendUser", function ({ query: { type } }, res) {
     }
 
     const recommendList = users.slice(0, 10).map((user) => {
-      return {
-        uid: user._id,
-        nickname: user.nickname,
-        description: user.description,
-        portfolio: user.portfolio,
-        rateOfReturn: user.rateOfReturn,
-        totalFollower: user.follower.length,
-      };
+      return getUserInfo(user);
     });
 
     res.send({ recommendation: recommendList });
@@ -177,8 +170,6 @@ router.get("/isFollowing", function ({ query: { uid, targetUid } }, res) {
 
 // ChangeSyncPeriod
 router.post("/ChangeSyncPeriod", function ({ body: { uid, newPeriod } }, res) {
-  console.log(uid);
-  console.log(newPeriod);
   User.findByIdAndUpdate(uid, { $set: { syncPeriod: newPeriod } })
     .then((user) => {
       if (!user) res.status(404).send({ error: "Failed to update syncPeriod" });
@@ -191,8 +182,6 @@ router.post("/ChangeSyncPeriod", function ({ body: { uid, newPeriod } }, res) {
 router.post(
   "/ChangeDescription",
   function ({ body: { uid, newDescription } }, res) {
-    console.log(uid);
-    console.log(newDescription);
     User.findByIdAndUpdate(uid, { $set: { description: newDescription } })
       .then((user) => {
         if (!user)

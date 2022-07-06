@@ -7,10 +7,7 @@ Also it would make more sense to put uid on headers andd add access token and re
 Some endpoint is not included in description below, since it will not be used in prototype
 
 TODO
-1. UserInfo - portfolioRatio add name, profit
-2. followingStock - add daily profit
-3. followingList - UserInfo 
-4. 
+1. RecommendUser
 
 
 
@@ -129,6 +126,7 @@ Get list of stocks that user is following
 |followingStock|Array|Array of object containing ticker and name|
 |- ticker|String|Ticker symbol of stock|
 |- name|String|Name of stock|
+|- dailyProfit|String||
 
 ```javascript
 {
