@@ -349,6 +349,31 @@ Change whether user is following another target user
 }
 ```
 
+<br>
+
+## Toggle Following Stock
+
+Change whether user is following stock
+
+> POST /users/ToggleFollowingStock
+
+**Parameters:**
+|Name|Type|Description|
+|:---|:---|:---|
+|uid|String|Uid of user|
+|ticker|String|Ticker symbol of stock|
+
+**Response:**
+|Name|Type|Description|
+|:---|:---|:---|
+|msg|String|"Followed Stock" or "Unfollowed Stock"|
+
+```javascript
+{
+  msg: "Followed Stock",
+}
+```
+
 Stock Endpoints
 =========
 
