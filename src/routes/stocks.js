@@ -273,17 +273,34 @@ router.get("/", function (req, res) {
 });
 
 // SearchStock
-router.get("/SearchStock", function ({ query: { name } }, res) {
-  Stock.find({
+router.get("/SearchStock", async function ({ query: { uid, name } }, res) {
+  const user = await User.findById(uid);
+  const api = new Client(
+    user.appkey,
+    user.appsecret,
+    user.accNumFront,
+    user.accNumBack,
+    { token: user.token, tokenExpiration: user.tokenExpiration }
+  );
+
+  const stocks = await Stock.find({
     $or: [
       { name: new RegExp(`^${name}`, "i") },
       { ticker: new RegExp(`^${name}`, "i") },
     ],
-  })
-    .limit(10)
-    .then((stocks) => {
-      res.send({ stocks });
+  }).limit(10);
+
+  const newStocks = [];
+  for (const stock of stocks) {
+    const response = await api.getPrice(stock.ticker);
+    newStocks.push({
+      ticker: stock.ticker,
+      name: stock.name,
+      dailyProfit: response.body.output.prdy_ctrt,
     });
+  }
+
+  res.send({ stocks: newStocks });
 });
 
 // Portfolio - 종목별 - 종목명, 지분율, 수익률

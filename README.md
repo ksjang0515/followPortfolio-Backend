@@ -382,6 +382,7 @@ Returns 10 similar stocks based on passed name
 **Parameters:**
 |Name|Type|Description|
 |:---|:---|:---|
+|uid|String|Uid of User|
 |name|String|Name or ticker of stock|
 
 **Response:**
@@ -390,6 +391,7 @@ Returns 10 similar stocks based on passed name
 |stocks|Array|Array of objects containing ticker and name<br>Contains 10 objects|
 |- ticker|String|Ticker symbol of stock|
 |- name|String|Name of stock|
+|- dailyProfit|String||
 
 ```javascript
 {
