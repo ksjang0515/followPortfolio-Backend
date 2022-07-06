@@ -87,8 +87,6 @@ router.get("/UserInfo", function ({ query: { uid } }, res) {
     return;
   }
 
-  console.log(uid);
-
   User.findById(uid)
     .then((user) => {
       if (!user) res.status(404).send({ error: "User not found" });

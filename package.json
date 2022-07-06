@@ -6,7 +6,8 @@
   "main": "index.js",
   "scripts": {
     "run": "node app.js",
-    "dev": "nodemon --ignore test/ app.js"
+    "dev": "nodemon --ignore test/ app.js",
+    "test": "node test/test.js"
   },
   "keywords": [],
   "author": "",

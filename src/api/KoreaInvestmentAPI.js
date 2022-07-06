@@ -300,20 +300,30 @@ class KoreaInvestmentAPI {
   }
 
   async getPrice(ticker) {
+    const token = await this.getToken();
+
     const obj = {
+      url:
+        this.options.domain +
+        "/uapi/domestic-stock/v1/quotations/inquire-price",
       headers: {
-        tr_id: "tr_id",
+        tr_id: "FHKST01010100",
+        authorization: `Bearer ${token}`,
+        appkey: this.appkey,
+        appsecret: this.appsecret,
+        "content-type": "application/json",
       },
-      data: {
+      params: {
         FID_COND_MRKT_DIV_CODE: "J",
         FID_INPUT_ISCD: ticker,
       },
       method: "GET",
     };
 
-    return this.request(obj, {
-      addAccNum: false,
-    });
+    return axios(obj).then((res) => ({
+      header: res.headers,
+      body: res.data,
+    }));
   }
 
   async getKline(ticker, interval, resume = false) {
