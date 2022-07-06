@@ -1,18 +1,62 @@
 import express from "express";
 import User from "../models/user.js";
 import Client from "../api/koInvTokenUpdate.js";
+import Stock from "../models/stock.js";
 
 const router = express.Router();
+
+const getUserInfo = (user) => {
+  const portfolioRatio = user.portfolioRatio.map((x) => {
+    if (x.ratioType === "stock") {
+      const stock = user.portfolio.find((y) => y.ticker === x.identifier);
+      x.name = stock.name;
+      x.rateOfReturn = stock.rateOfReturn;
+    } else {
+      const subscription = user.subscription.find(
+        (y) => y.uid === x.identifier
+      );
+      x.name = subscription.name;
+      x.rateOfReturn = subscription.rateOfReturn;
+    }
+
+    return {
+      identifier: x.identifier,
+      name: x.name,
+      ratio: x.ratio,
+      ratioType: x.ratioType,
+      rateOfReturn: x.rateOfReturn,
+    };
+  });
+
+  return {
+    uid: user.id.toString(),
+    nickname: user.nickname,
+    description: user.description,
+    portfolio: user.portfolio,
+    totalFollower: user.follower.length,
+    totalSubscriber: user.subscriber.length,
+    portfolioRatio: portfolioRatio,
+    syncPeriod: user.syncPeriod,
+    totalBalance: user.totalBalance,
+    rateOfReturn: user.rateOfReturn,
+  };
+};
 
 router.get("/", function (req, res) {
   res.send({ msg: "User Base Domain" });
 });
 
 //FollowingList
-router.get("/FollowingList", function ({ query: { uid } }, res) {
-  User.findById(uid).then((user) => {
-    res.send({ followingList: user.following });
-  });
+router.get("/FollowingList", async function ({ query: { uid } }, res) {
+  const user = await User.findById(uid);
+
+  const following = [];
+  for (const x of user.following) {
+    const followingUser = await User.findById(x.uid);
+    following.push(getUserInfo(followingUser));
+  }
+
+  res.send({ followingList: following });
 });
 
 // SyncPeriod
@@ -33,10 +77,28 @@ router.get("/Description", function ({ query: { uid } }, res) {
 });
 
 // FollowingListStock
-router.get("/FollowingListStock", function ({ query: { uid } }, res) {
-  User.findById(uid).then((user) => {
-    res.send({ followingStock: user.followingStock });
-  });
+router.get("/FollowingListStock", async function ({ query: { uid } }, res) {
+  const user = await User.findById(uid);
+
+  const api = new Client(
+    user.appkey,
+    user.appsecret,
+    user.accNumFront,
+    user.accNumBack,
+    { token: user.token, tokenExpiration: user.tokenExpiration }
+  );
+
+  const followingStock = [];
+  for (const stock of user.followingStock) {
+    const response = await api.getPrice(stock.ticker);
+    followingStock.push({
+      ticker: stock.ticker,
+      name: stock.name,
+      dailyProfit: response.body.output.prdy_ctrt,
+    });
+  }
+
+  res.send({ followingStock: followingStock });
 });
 
 // RecommendUser
@@ -90,19 +152,10 @@ router.get("/UserInfo", function ({ query: { uid } }, res) {
   User.findById(uid)
     .then((user) => {
       if (!user) res.status(404).send({ error: "User not found" });
-      else
-        res.send({
-          uid: user.id.toString(),
-          nickname: user.nickname,
-          description: user.description,
-          portfolio: user.portfolio,
-          totalFollower: user.follower.length,
-          totalSubscriber: user.subscriber.length,
-          portfolioRatio: user.portfolioRatio,
-          syncPeriod: user.syncPeriod,
-          totalBalance: user.totalBalance,
-          rateOfReturn: user.rateOfReturn,
-        });
+
+      const obj = getUserInfo(user);
+
+      res.send(obj);
     })
     .catch((err) => {
       res.status(500).send(err);
@@ -124,10 +177,12 @@ router.get("/isFollowing", function ({ query: { uid, targetUid } }, res) {
 
 // ChangeSyncPeriod
 router.post("/ChangeSyncPeriod", function ({ body: { uid, newPeriod } }, res) {
+  console.log(uid);
+  console.log(newPeriod);
   User.findByIdAndUpdate(uid, { $set: { syncPeriod: newPeriod } })
     .then((user) => {
       if (!user) res.status(404).send({ error: "Failed to update syncPeriod" });
-      else res.send({ msg: "Successfully updated syncPeriod" });
+      else res.send({ msg: "Successfully updated Sync Period" });
     })
     .catch((error) => res.status(500).send(error));
 });
@@ -136,6 +191,8 @@ router.post("/ChangeSyncPeriod", function ({ body: { uid, newPeriod } }, res) {
 router.post(
   "/ChangeDescription",
   function ({ body: { uid, newDescription } }, res) {
+    console.log(uid);
+    console.log(newDescription);
     User.findByIdAndUpdate(uid, { $set: { description: newDescription } })
       .then((user) => {
         if (!user)
@@ -177,6 +234,32 @@ router.post("/ToggleFollowing", function ({ body: { uid, targetUid } }, res) {
         );
     });
   });
+});
+
+//
+router.post("/FollowStock", async function ({ body: { uid, ticker } }, res) {
+  const user = await User.findById(uid);
+
+  for (const stock of user.followingStock)
+    if (stock.ticker === ticker) {
+      await User.findByIdAndUpdate(uid, { $pull: { followingStock: stock } });
+
+      res.send({ msg: "Unfollowed Stock" });
+      return;
+    }
+
+  const stock = await Stock.findOne({ ticker: ticker });
+
+  await User.findByIdAndUpdate(uid, {
+    $push: {
+      followingStock: {
+        ticker: ticker,
+        name: stock.name,
+      },
+    },
+  });
+
+  res.send({ msg: "Followed Stock" });
 });
 
 // AddNewUser

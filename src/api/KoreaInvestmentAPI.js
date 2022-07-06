@@ -45,7 +45,7 @@ class KoreaInvestmentAPI {
   async getToken() {
     if (this.isTokenExpired() || this.options.token === undefined) {
       const res = await this.issueToken();
-      this.setToken(res.body.access_token, res.body.expires_in);
+      await this.setToken(res.body.access_token, res.body.expires_in);
     }
     return this.options.token;
   }

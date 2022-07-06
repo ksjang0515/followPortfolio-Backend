@@ -20,14 +20,15 @@ const syncPortfolioToKoInv = async function (uid) {
 
   const newPortfolio = [];
   for (const elem of response.body.output1) {
+    if (elem.hldg_qty === "0") continue;
     newPortfolio.push({
+      ticker: elem.pdno,
+      name: elem.prdt_name,
       qty: elem.hldg_qty,
       estimatedValue: elem.evlu_amt,
       rateOfReturn: elem.evlu_pfls_rt,
     });
   }
-
-  user.portfolio = newPortfolio;
 
   // 예수금
   let remainingCash = response.body.output2[0].prvs_rcdl_excc_amt;
@@ -38,7 +39,7 @@ const syncPortfolioToKoInv = async function (uid) {
     remainingCash -= elem.remainingCash; //Subscription 예수금과 일반 예수금 따로 관리
 
     for (const stock of elem.stock) {
-      const portfolioObj = user.portfolio.find((x) => x.ticker === elem.pdno);
+      const portfolioObj = newPortfolio.find((x) => x.ticker === elem.pdno);
 
       Object.assign(stock, {
         price: portfolioObj.price,
@@ -49,17 +50,27 @@ const syncPortfolioToKoInv = async function (uid) {
       portfolioObj.qty -= stock.qty;
 
       elem.balance += stock.estimatedValue;
+      delete stock._id;
     }
+    delete elem._id;
   }
 
-  const deposit = user.portfolio.find((x) => x.ticker === "000000");
-  Object.assign(deposit, {
+  newPortfolio.push({
+    ticker: "000000",
+    name: "예수금",
     qty: remainingCash,
     estimatedValue: remainingCash,
+    rateOfReturn: "1",
   });
 
   // 바꾼 정보를 DB에 저장
-  user.save();
+  await User.findByIdAndUpdate(uid, {
+    $set: {
+      portfolio: newPortfolio,
+      subscription: user.subscription,
+      totalBalance: response.body.output2[0].dnca_tot_amt,
+    },
+  }).exec();
 };
 
 const getPriceNMarginRate = async (api, ticker) => {
@@ -75,193 +86,185 @@ const calQty = (balance, { marginRate, price }) =>
   parseInt((balance * (1 / (1 + marginRate / 100))) / price);
 
 const syncPortfolioToRatio = async function (uid, newPortfolioRatio = null) {
-  syncPortfolioToKoInv(uid).then(() => {
-    // newPortfolioRatio: [{identifier, ratio, type}]
-    User.findById(uid).then(async (user) => {
-      // get current raw portfolio(made of only stocks and not subscriptions)
-      // from korea Invest
-      if (!newPortfolioRatio) newPortfolioRatio = user.portfolioRatio;
-      newPortfolioRatio = newPortfolioRatio.filter(
-        (x) => x.identifier !== "000000"
-      );
+  await syncPortfolioToKoInv(uid);
 
-      const api = new Client(
-        user.appkey,
-        user.appsecret,
-        user.accNumFront,
-        user.accNumBack,
-        { token: user.token, tokenExpiration: user.tokenExpiration }
-      );
-      const currentRawPortfolio = {};
-      for (const stock of user.portfolio)
-        if (stock.ticker !== "000000")
-          currentRawPortfolio[stock.ticker] = stock.qty;
+  // newPortfolioRatio: [{identifier, ratio, type}]
+  const user = await User.findById(uid);
 
-      for (const subscription of user.subscription)
-        for (const stock of subscription.stock)
-          if (stock.ticker !== "000000")
-            currentRawPortfolio[stock.ticker] = currentRawPortfolio[
-              stock.ticker
-            ]
-              ? currentRawPortfolio[stock.ticker] + stock.qty
-              : stock.qty;
+  // get current raw portfolio(made of only stocks and not subscriptions)
+  // from korea Invest
+  if (!newPortfolioRatio) newPortfolioRatio = user.portfolioRatio;
 
-      const totalBalance = user.totalBalance;
+  const api = new Client(
+    user.appkey,
+    user.appsecret,
+    user.accNumFront,
+    user.accNumBack,
+    { token: user.token, tokenExpiration: user.tokenExpiration }
+  );
+  const currentRawPortfolio = {};
+  for (const stock of user.portfolio)
+    if (stock.ticker !== "000000")
+      currentRawPortfolio[stock.ticker] = stock.qty;
 
-      // calculate new raw portfolio from new ratio
-      // and what stock/remaining cash will each subscription have
-      const newRawPortfolio = {}, // qty
-        newSubscription = [];
-      for (const elem of newPortfolioRatio) {
-        if (elem.ratioType === "stock") {
+  for (const subscription of user.subscription)
+    for (const stock of subscription.stock)
+      if (stock.ticker !== "000000")
+        currentRawPortfolio[stock.ticker] = currentRawPortfolio[stock.ticker]
+          ? currentRawPortfolio[stock.ticker] + stock.qty
+          : stock.qty;
+
+  const totalBalance = user.totalBalance;
+
+  // calculate new raw portfolio from new ratio
+  // and what stock/remaining cash will each subscription have
+  const newRawPortfolio = {}, // qty
+    newSubscription = [];
+  for (const elem of newPortfolioRatio) {
+    if (elem.ratioType === "stock") {
+      if (elem.identifier === "000000") continue;
+
+      const priceNMarginRate = await getPriceNMarginRate(api, elem.identifier);
+      newRawPortfolio[elem.identifier] = newRawPortfolio[elem.identifier]
+        ? newRawPortfolio[elem.identifier] +
+          calQty(totalBalance * elem.ratio, priceNMarginRate)
+        : calQty(totalBalance * elem.ratio, priceNMarginRate);
+    } else if (elem.ratioType === "subscription") {
+      const subBalance = totalBalance * elem.ratio,
+        obj = {
+          uid: elem.identifier,
+          stock: [],
+          balance: subBalance,
+        };
+
+      let remainingCash = subBalance;
+      User.findById(obj.uid).then(async (targetUser) => {
+        // get portfolio ratio of target user
+        for (const stockRatio of targetUser.portfolioRatio) {
+          if (stockRatio.ticker === "000000") continue;
           const priceNMarginRate = await getPriceNMarginRate(
             api,
-            elem.identifier
+            stockRatio.ticker
           );
-          newRawPortfolio[elem.identifier] = newRawPortfolio[elem.identifier]
-            ? newRawPortfolio[elem.identifier] +
-              calQty(totalBalance * elem.ratio, priceNMarginRate)
-            : calQty(totalBalance * elem.ratio, priceNMarginRate);
-        } else if (elem.ratioType === "subscription") {
-          const subBalance = totalBalance * elem.ratio,
-            obj = {
-              uid: elem.identifier,
-              stock: [],
-              balance: subBalance,
-            };
+          const balance = stockRatio.ratio * obj.balance,
+            qty = calQty(balance, priceNMarginRate);
 
-          let remainingCash = subBalance;
-          User.findById(obj.uid).then(async (targetUser) => {
-            // get portfolio ratio of target user
-            for (const stockRatio of targetUser.portfolioRatio) {
-              if (stockRatio.ticker === "000000") continue;
-              const priceNMarginRate = await getPriceNMarginRate(
-                api,
-                stockRatio.ticker
-              );
-              const balance = stockRatio.ratio * obj.balance,
-                qty = calQty(balance, priceNMarginRate);
+          const stockObj = {
+            ticker: stockRatio.ticker,
+            balance: balance,
+            qty: qty,
+            price: priceNMarginRate.price,
+            estimatedValue: qty * priceNMarginRate.price,
+          };
 
-              const stockObj = {
-                ticker: stockRatio.ticker,
-                balance: balance,
-                qty: qty,
-                price: priceNMarginRate.price,
-                estimatedValue: qty * priceNMarginRate.price,
-              };
+          newRawPortfolio[stockObj.ticker] = newRawPortfolio[stockObj.ticker]
+            ? newRawPortfolio[stockObj.ticker] + stockObj.qty
+            : stockObj.qty;
 
-              newRawPortfolio[stockObj.ticker] = newRawPortfolio[
-                stockObj.ticker
-              ]
-                ? newRawPortfolio[stockObj.ticker] + stockObj.qty
-                : stockObj.qty;
-
-              remainingCash -= stockObj.balance;
-              obj.stock.push(stockObj);
-            }
-            obj.stock.push({
-              ticker: "000000",
-              name: "예치금",
-              qty: remainingCash,
-              estimatedValue: remainingCash,
-            });
-          });
-          newSubscription.push(obj);
+          remainingCash -= stockObj.balance;
+          obj.stock.push(stockObj);
         }
-      }
-
-      // newRawPortfolio to list of stocks
-      // call api.getPrice and get price, marginRatio to calculate qty
-      const tickerList = new Set([
-        ...Object.keys(currentRawPortfolio),
-        ...Object.keys(newRawPortfolio),
-      ]);
-
-      const sellActions = [],
-        buyActions = [];
-      for (const ticker of tickerList) {
-        const oldQty = currentRawPortfolio[ticker]
-          ? currentRawPortfolio[ticker]
-          : 0;
-        const newQty = newRawPortfolio[ticker] ? newRawPortfolio[ticker] : 0;
-        if (oldQty > newQty) sellActions.push({ ticker, qty: oldQty - newQty });
-        else if (newQty > oldQty)
-          buyActions.push({ ticker, qty: newQty - oldQty });
-      }
-
-      const sellPromises = [];
-      for (const action of sellActions) {
-        const promise = api.MarketSell(action.ticker, action.qty.toString());
-        sellPromises.push(promise);
-      }
-
-      Promise.all(sellPromises).then(() => {
-        const buyPromises = [];
-        for (const action of buyActions) {
-          const promise = qaapi.MarketBuy(action.ticker, action.qty.toString());
-          buyPromises.push(promise);
-        }
-        Promise.all(buyPromises).then((a) => {
-          user.subscription = newSubscription.map((x) => {
-            return User.findById(x.uid).then((targetUser) => {
-              const subscriber = targetUser.subscriber.find(
-                (y) => y.uid === uid
-              );
-              if (subscriber) {
-                subscriber.stock = x.stock.map((y) => {
-                  const stockObj = {
-                    ticker: y.ticker,
-                    qty: y.qty,
-                  };
-                  return stockObj;
-                });
-                subscriber.balance = x.balance;
-              } else {
-                targetUser.subscriber.push({
-                  uid: uid,
-                  stock: x.stock.map((y) => {
-                    const stockObj = {
-                      ticker: y.ticker,
-                      qty: y.qty,
-                    };
-                    return stockObj;
-                  }),
-                  balance: x.balance,
-                });
-              }
-              targetUser.save();
-
-              const obj = {
-                uid: x.uid,
-                nickname: targetUser.nickname,
-                stock: x.stock.map((y) => {
-                  const stockName = Stock.find({ ticker: y.ticker }).then(
-                    (z) => z.name
-                  );
-                  const stockObj = {
-                    ticker: y.ticker,
-                    name: stockName,
-                    qty: y.qty,
-                    price: y.price,
-                    estimatedValue: y.estimatedValue,
-                  };
-                  return stockObj;
-                }),
-                inputBalance: x.balance,
-                balance: x.balance,
-              };
-              return obj;
-            });
-          });
-          user.lastSynced = new Date();
-          user.portfolioRatio = newPortfolioRatio;
-
-          user.save();
-          syncPortfolioToKoInv(uid);
+        obj.stock.push({
+          ticker: "000000",
+          name: "예치금",
+          qty: remainingCash,
+          estimatedValue: remainingCash,
         });
       });
+      newSubscription.push(obj);
+    }
+  }
+
+  // newRawPortfolio to list of stocks
+  // call api.getPrice and get price, marginRatio to calculate qty
+  const tickerList = new Set([
+    ...Object.keys(currentRawPortfolio),
+    ...Object.keys(newRawPortfolio),
+  ]);
+
+  const sellActions = [],
+    buyActions = [];
+  for (const ticker of tickerList) {
+    const oldQty = currentRawPortfolio[ticker]
+      ? currentRawPortfolio[ticker]
+      : 0;
+    const newQty = newRawPortfolio[ticker] ? newRawPortfolio[ticker] : 0;
+    if (oldQty > newQty) sellActions.push({ ticker, qty: oldQty - newQty });
+    else if (newQty > oldQty) buyActions.push({ ticker, qty: newQty - oldQty });
+  }
+
+  const sellPromises = [];
+  for (const action of sellActions) {
+    const promise = api.MarketSell(action.ticker, action.qty.toString());
+    sellPromises.push(promise);
+  }
+  await Promise.all(sellPromises);
+
+  const buyPromises = [];
+  for (const action of buyActions) {
+    const promise = api.MarketBuy(action.ticker, action.qty.toString());
+    buyPromises.push(promise);
+  }
+  await Promise.all(buyPromises);
+
+  user.subscription = newSubscription.map((x) => {
+    return User.findById(x.uid).then((targetUser) => {
+      const subscriber = targetUser.subscriber.find((y) => y.uid === uid);
+      if (subscriber) {
+        subscriber.stock = x.stock.map((y) => {
+          const stockObj = {
+            ticker: y.ticker,
+            qty: y.qty,
+          };
+          return stockObj;
+        });
+        subscriber.balance = x.balance;
+      } else {
+        targetUser.subscriber.push({
+          uid: uid,
+          stock: x.stock.map((y) => {
+            const stockObj = {
+              ticker: y.ticker,
+              qty: y.qty,
+            };
+            return stockObj;
+          }),
+          balance: x.balance,
+        });
+      }
+      targetUser.save();
+
+      const obj = {
+        uid: x.uid,
+        nickname: targetUser.nickname,
+        stock: x.stock.map((y) => {
+          const stockName = Stock.find({ ticker: y.ticker }).then(
+            (z) => z.name
+          );
+          const stockObj = {
+            ticker: y.ticker,
+            name: stockName,
+            qty: y.qty,
+            price: y.price,
+            estimatedValue: y.estimatedValue,
+          };
+          return stockObj;
+        }),
+        inputBalance: x.balance,
+        balance: x.balance,
+      };
+      return obj;
     });
   });
+
+  User.findByIdAndUpdate(uid, {
+    $set: {
+      lastSynced: new Date(),
+      portfolioRatio: newPortfolioRatio,
+      subscription: user.subscription,
+    },
+  }).exec();
+  await syncPortfolioToKoInv(uid);
 };
 
 //Base Domain

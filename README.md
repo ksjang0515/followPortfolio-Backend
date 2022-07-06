@@ -6,6 +6,12 @@ Also it would make more sense to put uid on headers andd add access token and re
 
 Some endpoint is not included in description below, since it will not be used in prototype
 
+TODO
+1. UserInfo - portfolioRatio add name, profit
+2. followingStock - add daily profit
+3. followingList - UserInfo 
+4. 
+
 
 
 User Endpoints
@@ -207,7 +213,7 @@ Get
 |- name|String||
 |- qty|Number||
 |- estimatedValue|Number||
-|- rateOfReturn|Stromg||
+|- rateOfReturn|String||
 |totalFollower|Number|Number of followers|
 |totalSubscriber|Number|Number of subscribers|
 |portfolioRatio|Array||
@@ -472,7 +478,7 @@ Redistrict stock / subscription to given ratio or pervious ratio
 |Name|Type|Description|
 |:---|:---|:---|
 |uid|String|Uid of user|
-|newPortfolioRatio|Array|Array of objects containing identifier, ratio, and ratioType|
+|newPortfolioRatio|Array|Array of objects containing identifier, ratio, and ratioType<br>This parameter is not mandatory and will be used previous ratio when empty|
 |- identifier|String|Ticker symbol or uid of ratio<br>Depends on ratioType|
 |- ratio|String||
 |- ratioType|String|"stock" or "subscription"|
