@@ -94,7 +94,7 @@ router.get("/FollowingListStock", async function ({ query: { uid } }, res) {
     followingStock.push({
       ticker: stock.ticker,
       name: stock.name,
-      dailyProfit: response.body.output.prdy_ctrt,
+      dailyProfit: response.body.output.prdy_ctrt * 0.01, //TODO
     });
   }
 
@@ -226,30 +226,33 @@ router.post("/ToggleFollowing", function ({ body: { uid, targetUid } }, res) {
 });
 
 //
-router.post("/FollowStock", async function ({ body: { uid, ticker } }, res) {
-  const user = await User.findById(uid);
+router.post(
+  "/ToggleFollowingStock",
+  async function ({ body: { uid, ticker } }, res) {
+    const user = await User.findById(uid);
 
-  for (const stock of user.followingStock)
-    if (stock.ticker === ticker) {
-      await User.findByIdAndUpdate(uid, { $pull: { followingStock: stock } });
+    for (const stock of user.followingStock)
+      if (stock.ticker === ticker) {
+        await User.findByIdAndUpdate(uid, { $pull: { followingStock: stock } });
 
-      res.send({ msg: "Unfollowed Stock" });
-      return;
-    }
+        res.send({ msg: "Unfollowed Stock" });
+        return;
+      }
 
-  const stock = await Stock.findOne({ ticker: ticker });
+    const stock = await Stock.findOne({ ticker: ticker });
 
-  await User.findByIdAndUpdate(uid, {
-    $push: {
-      followingStock: {
-        ticker: ticker,
-        name: stock.name,
+    await User.findByIdAndUpdate(uid, {
+      $push: {
+        followingStock: {
+          ticker: ticker,
+          name: stock.name,
+        },
       },
-    },
-  });
+    });
 
-  res.send({ msg: "Followed Stock" });
-});
+    res.send({ msg: "Followed Stock" });
+  }
+);
 
 // AddNewUser
 router.post(

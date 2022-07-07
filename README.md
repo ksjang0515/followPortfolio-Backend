@@ -8,6 +8,7 @@ Some endpoint is not included in description below, since it will not be used in
 
 TODO
 1. RecommendUser
+2. Fix decimal precision bugs
 
 
 
@@ -50,6 +51,15 @@ Get list of users user is following
 |:---|:---|:---|
 |followingList|Array|Array of object containing uid|
 |- uid|String|Uid of following user|
+|- nickname|String||
+|- description|String||
+|- portfolio|Array||
+|- totalFollower|Number||
+|- totalSubscriber|Number||
+|- portfolioRatio|Array||
+|- syncPeriod|Number||
+|- totalBalance|Number||
+|- rateOfReturn|Number||
 
 ```javascript
 {

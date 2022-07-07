@@ -138,38 +138,43 @@ const syncPortfolioToRatio = async function (uid, newPortfolioRatio = null) {
         };
 
       let remainingCash = subBalance;
-      User.findById(obj.uid).then(async (targetUser) => {
-        // get portfolio ratio of target user
-        for (const stockRatio of targetUser.portfolioRatio) {
-          if (stockRatio.ticker === "000000") continue;
-          const priceNMarginRate = await getPriceNMarginRate(
-            api,
-            stockRatio.ticker
-          );
-          const balance = stockRatio.ratio * obj.balance,
-            qty = calQty(balance, priceNMarginRate);
+      const targetUser = await User.findById(obj.uid);
+      // get portfolio ratio of target user
+      for (const stockRatio of targetUser.portfolioRatio) {
+        if (
+          stockRatio.ratioType === "subscription" ||
+          stockRatio.identifier === "000000"
+        )
+          continue;
+        const priceNMarginRate = await getPriceNMarginRate(
+          api,
+          stockRatio.identifier
+        );
+        const balance = parseInt(stockRatio.ratio * obj.balance),
+          qty = calQty(balance, priceNMarginRate);
 
-          const stockObj = {
-            ticker: stockRatio.ticker,
-            balance: balance,
-            qty: qty,
-            price: priceNMarginRate.price,
-            estimatedValue: qty * priceNMarginRate.price,
-          };
+        const a = await Stock.findOne({ ticker: stockRatio.identifier });
+        const stockName = a.name;
 
-          newRawPortfolio[stockObj.ticker] = newRawPortfolio[stockObj.ticker]
-            ? newRawPortfolio[stockObj.ticker] + stockObj.qty
-            : stockObj.qty;
+        const stockObj = {
+          ticker: stockRatio.identifier,
+          name: stockName,
+          qty: qty,
+          estimatedValue: qty * priceNMarginRate.price,
+        };
 
-          remainingCash -= stockObj.balance;
-          obj.stock.push(stockObj);
-        }
-        obj.stock.push({
-          ticker: "000000",
-          name: "예치금",
-          qty: remainingCash,
-          estimatedValue: remainingCash,
-        });
+        newRawPortfolio[stockObj.ticker] = newRawPortfolio[stockObj.ticker]
+          ? newRawPortfolio[stockObj.ticker] + stockObj.qty
+          : stockObj.qty;
+
+        remainingCash -= stockObj.estimatedValue;
+        obj.stock.push(stockObj);
+      }
+      obj.stock.push({
+        ticker: "000000",
+        name: "예치금",
+        qty: remainingCash,
+        estimatedValue: remainingCash,
       });
       newSubscription.push(obj);
     }
@@ -207,63 +212,55 @@ const syncPortfolioToRatio = async function (uid, newPortfolioRatio = null) {
   }
   await Promise.all(buyPromises);
 
-  user.subscription = newSubscription.map((x) => {
-    return User.findById(x.uid).then((targetUser) => {
-      const subscriber = targetUser.subscriber.find((y) => y.uid === uid);
-      if (subscriber) {
-        subscriber.stock = x.stock.map((y) => {
-          const stockObj = {
-            ticker: y.ticker,
-            qty: y.qty,
-          };
-          return stockObj;
-        });
-        subscriber.balance = x.balance;
-      } else {
-        targetUser.subscriber.push({
-          uid: uid,
-          stock: x.stock.map((y) => {
-            const stockObj = {
-              ticker: y.ticker,
-              qty: y.qty,
-            };
-            return stockObj;
-          }),
-          balance: x.balance,
-        });
-      }
-      targetUser.save();
+  user.subscription = newSubscription.map(async (x) => {
+    const targetUser = await User.findById(x.uid);
+    const subscriber = targetUser.subscriber.find((y) => y.uid === uid);
+    if (subscriber) {
+      await Stock.updateOne(
+        { _id: x.uid, "subscriber.uid": uid },
+        {
+          $set: {
+            "subscriber.$.stock": x.stock,
+            "subscriber.$.balance": x.balance,
+          },
+        }
+      ).exec();
+    } else {
+      await User.findByIdAndUpdate(x.uid, {
+        $push: {
+          subscriber: {
+            uid: uid,
+            stock: x.stock.map((y) => {
+              const stockObj = {
+                ticker: y.ticker,
+                qty: y.qty,
+              };
+              return stockObj;
+            }),
+            balance: x.balance,
+          },
+        },
+      }).exec();
+    }
 
-      const obj = {
-        uid: x.uid,
-        nickname: targetUser.nickname,
-        stock: x.stock.map((y) => {
-          const stockName = Stock.find({ ticker: y.ticker }).then(
-            (z) => z.name
-          );
-          const stockObj = {
-            ticker: y.ticker,
-            name: stockName,
-            qty: y.qty,
-            price: y.price,
-            estimatedValue: y.estimatedValue,
-          };
-          return stockObj;
-        }),
-        inputBalance: x.balance,
-        balance: x.balance,
-      };
-      return obj;
-    });
+    const obj = {
+      uid: x.uid,
+      nickname: targetUser.nickname,
+      stock: x.stock,
+      inputBalance: x.balance,
+      balance: x.balance,
+    };
+    return obj;
   });
 
-  User.findByIdAndUpdate(uid, {
+  await User.findByIdAndUpdate(uid, {
     $set: {
       lastSynced: new Date(),
       portfolioRatio: newPortfolioRatio,
       subscription: user.subscription,
     },
   }).exec();
+
   await syncPortfolioToKoInv(uid);
 };
 
@@ -274,6 +271,7 @@ router.get("/", function (req, res) {
 
 // SearchStock
 router.get("/SearchStock", async function ({ query: { uid, name } }, res) {
+  if (!uid) res.send({ msg: "uid was not sent" });
   const user = await User.findById(uid);
   const api = new Client(
     user.appkey,
@@ -296,7 +294,7 @@ router.get("/SearchStock", async function ({ query: { uid, name } }, res) {
     newStocks.push({
       ticker: stock.ticker,
       name: stock.name,
-      dailyProfit: response.body.output.prdy_ctrt,
+      dailyProfit: response.body.output.prdy_ctrt * 0.01, //TODO
     });
   }
 
