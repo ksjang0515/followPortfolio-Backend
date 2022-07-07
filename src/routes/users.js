@@ -122,6 +122,12 @@ router.get("/RecommendUser", function ({ query: { type } }, res) {
         if (aProfit < bProfit) return 1;
         return 0;
       });
+    } else if (type === "balance") {
+      users.sort((a, b) => {
+        if (a.totalBalance > b.totalBalance) return -1;
+        if (a.totalBalance < b.totalBalance) return 1;
+        return 0;
+      });
     } else {
       res.status(500).send({ msg: "Wrong type has been sent" });
       return;

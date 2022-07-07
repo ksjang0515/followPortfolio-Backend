@@ -34,25 +34,45 @@ const syncPortfolioToKoInv = async function (uid) {
   let remainingCash = response.body.output2[0].prvs_rcdl_excc_amt;
 
   // Subscription마다 주식 잔고와 예수금 제외 및 subscription 정보로 저장
+  const newSubscription = [];
   for (const elem of user.subscription) {
-    elem.balance = elem.remainingCash;
-    remainingCash -= elem.remainingCash; //Subscription 예수금과 일반 예수금 따로 관리
+    const x = {
+      uid: elem.uid,
+      nickname: elem.nickname,
+      stock: [],
+      balance: 0,
+    };
 
     for (const stock of elem.stock) {
-      const portfolioObj = newPortfolio.find((x) => x.ticker === elem.pdno);
+      if (stock.ticker === "000000") {
+        remainingCash -= stock.qty; //Subscription 예수금과 일반 예수금 따로 관리
+        x.stock.push({
+          ticker: stock.ticker,
+          name: stock.name,
+          qty: stock.qty,
+          estimatedValue: stock.estimatedValue,
+        });
+        x.balance += stock.estimatedValue;
+        continue;
+      }
+      const portfolioObj = response.body.output1.find(
+        (x) => x.pdno === stock.ticker
+      );
 
-      Object.assign(stock, {
-        price: portfolioObj.price,
-        estimatedValue: portfolioObj.price * stock.qty,
+      x.stock.push({
+        ticker: stock.ticker,
+        name: stock.name,
+        qty: stock.qty,
+        estimatedValue: portfolioObj.prpr * stock.qty,
       });
 
       portfolioObj.estimatedValue -= stock.estimatedValue;
       portfolioObj.qty -= stock.qty;
 
-      elem.balance += stock.estimatedValue;
-      delete stock._id;
+      x.balance += portfolioObj.prpr * stock.qty;
     }
-    delete elem._id;
+    x.inputBalance = x.balance;
+    newSubscription.push(x);
   }
 
   newPortfolio.push({
@@ -130,7 +150,7 @@ const syncPortfolioToRatio = async function (uid, newPortfolioRatio = null) {
           calQty(totalBalance * elem.ratio, priceNMarginRate)
         : calQty(totalBalance * elem.ratio, priceNMarginRate);
     } else if (elem.ratioType === "subscription") {
-      const subBalance = totalBalance * elem.ratio,
+      const subBalance = parseInt(totalBalance * elem.ratio),
         obj = {
           uid: elem.identifier,
           stock: [],
@@ -172,7 +192,7 @@ const syncPortfolioToRatio = async function (uid, newPortfolioRatio = null) {
       }
       obj.stock.push({
         ticker: "000000",
-        name: "예치금",
+        name: "예수금",
         qty: remainingCash,
         estimatedValue: remainingCash,
       });
@@ -212,7 +232,8 @@ const syncPortfolioToRatio = async function (uid, newPortfolioRatio = null) {
   }
   await Promise.all(buyPromises);
 
-  user.subscription = newSubscription.map(async (x) => {
+  const arr = [];
+  for (const x of newSubscription) {
     const targetUser = await User.findById(x.uid);
     const subscriber = targetUser.subscriber.find((y) => y.uid === uid);
     if (subscriber) {
@@ -250,8 +271,10 @@ const syncPortfolioToRatio = async function (uid, newPortfolioRatio = null) {
       inputBalance: x.balance,
       balance: x.balance,
     };
-    return obj;
-  });
+
+    arr.push(obj);
+  }
+  user.subscription = arr;
 
   await User.findByIdAndUpdate(uid, {
     $set: {
