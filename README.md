@@ -160,7 +160,7 @@ Get list of recommended users
 **Parameters:**
 |Name|Type|Description|
 |:---|:---|:---|
-|type|String|Select recommendation base<br>Should be one of "follower", "profit", "balance"|
+|type|String|Select recommendation base<br>Should be one of "subscriber", "profit", "balance"|
 
 **Response:**
 |Name|Type|Description|

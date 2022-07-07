@@ -105,10 +105,10 @@ router.get("/FollowingListStock", async function ({ query: { uid } }, res) {
 router.get("/RecommendUser", function ({ query: { type } }, res) {
   User.find({}).then((users) => {
     console.log(type);
-    if (type === "follower") {
+    if (type === "subscriber") {
       users.sort((a, b) => {
-        const aFollowerLen = a.follower.length,
-          bFollowerLen = b.follower.length;
+        const aFollowerLen = a.subscriber.length,
+          bFollowerLen = b.subscriber.length;
 
         if (aFollowerLen > bFollowerLen) return -1;
         if (aFollowerLen < bFollowerLen) return 1;
