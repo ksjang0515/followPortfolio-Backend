@@ -177,6 +177,7 @@ Get list of recommended users
 |--- rateOfReturn|||
 |- rateOfReturn|String|Rate of return of user's portfolio|
 |- totalFollower|Number|Number of followers|
+|- totalSubscriber|Number|Number of subscribers|
 
 ```javascript
 {
