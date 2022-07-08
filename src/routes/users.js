@@ -15,8 +15,11 @@ const getUserInfo = (user) => {
       const subscription = user.subscription.find(
         (y) => y.uid === x.identifier
       );
-      x.name = subscription.name;
-      x.rateOfReturn = subscription.rateOfReturn;
+      x.name = subscription.nickname;
+      x.rateOfReturn = (
+        subscription.balance / subscription.inputBalance -
+        1
+      ).toFixed(3);
     }
 
     return {

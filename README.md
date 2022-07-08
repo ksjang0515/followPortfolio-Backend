@@ -174,7 +174,7 @@ Get list of recommended users
 |--- name|||
 |--- qty|||
 |--- estimatedValue|||
-|--- rateOfReturn|||
+|--- rateOfReturn|String||
 |- rateOfReturn|String|Rate of return of user's portfolio|
 |- totalFollower|Number|Number of followers|
 |- totalSubscriber|Number|Number of subscribers|
@@ -506,7 +506,7 @@ Returns whether user is subscribed to target user
 
 ## Sync Portfolio to Ratio
 
-Redistrict stock / subscription to given ratio or pervious ratio
+Redistribute stock / subscription to given ratio or pervious ratio
 
 > POST /stocks/SyncPortfolio
 
@@ -519,7 +519,35 @@ Redistrict stock / subscription to given ratio or pervious ratio
 |- ratio|String||
 |- ratioType|String|"stock" or "subscription"|
 
-**Response:** None
+**Response:** 
+|Name|Type|Description|
+|:---|:---|:---|
+|msg|String|"Synced Portfolio"|
+
+```
+{
+  msg: "Synced Portfolio" 
+}
+```
+
+<br>
+
+## Reload Portfolio
+
+Sync portfolio data to Korea Invest
+
+> POST /stocks/ReloadPortfolio
+
+**Parameters:**
+|Name|Type|Description|
+|:---|:---|:---|
+|uid|String|Uid of user|
+
+**Response:** 
+|Name|Type|Description|
+|:---|:---|:---|
+|msg|String|"Synced"|
+
 
 ```
 {

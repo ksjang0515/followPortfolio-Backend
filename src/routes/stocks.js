@@ -26,7 +26,7 @@ const syncPortfolioToKoInv = async function (uid) {
       name: elem.prdt_name,
       qty: elem.hldg_qty,
       estimatedValue: elem.evlu_amt,
-      rateOfReturn: elem.evlu_pfls_rt,
+      rateOfReturn: elem.evlu_pfls_rt * 0.01,
     });
   }
 
@@ -80,7 +80,7 @@ const syncPortfolioToKoInv = async function (uid) {
     name: "예수금",
     qty: remainingCash,
     estimatedValue: remainingCash,
-    rateOfReturn: "1",
+    rateOfReturn: "0",
   });
 
   // 바꾼 정보를 DB에 저장
@@ -237,11 +237,18 @@ const syncPortfolioToRatio = async function (uid, newPortfolioRatio = null) {
     const targetUser = await User.findById(x.uid);
     const subscriber = targetUser.subscriber.find((y) => y.uid === uid);
     if (subscriber) {
-      await Stock.updateOne(
+      const test = await User.findOne({
+        _id: x.uid,
+        "subscriber.uid": uid,
+      });
+      await User.findOneAndUpdate(
         { _id: x.uid, "subscriber.uid": uid },
         {
           $set: {
-            "subscriber.$.stock": x.stock,
+            "subscriber.$.stock": x.stock.map((y) => ({
+              ticker: y.ticker,
+              qty: y.qty,
+            })),
             "subscriber.$.balance": x.balance,
           },
         }
@@ -251,13 +258,10 @@ const syncPortfolioToRatio = async function (uid, newPortfolioRatio = null) {
         $push: {
           subscriber: {
             uid: uid,
-            stock: x.stock.map((y) => {
-              const stockObj = {
-                ticker: y.ticker,
-                qty: y.qty,
-              };
-              return stockObj;
-            }),
+            stock: x.stock.map((y) => ({
+              ticker: y.ticker,
+              qty: y.qty,
+            })),
             balance: x.balance,
           },
         },
@@ -280,7 +284,7 @@ const syncPortfolioToRatio = async function (uid, newPortfolioRatio = null) {
     $set: {
       lastSynced: new Date(),
       portfolioRatio: newPortfolioRatio,
-      subscription: user.subscription,
+      subscription: arr,
     },
   }).exec();
 
@@ -374,8 +378,9 @@ router.get("/IsSubscribed", function ({ query: { uid, targetUid } }, res) {
 //SyncPortfolio
 router.post(
   "/SyncPortfolio",
-  function ({ body: { uid, newPortfolioRatio } }, res) {
-    syncPortfolioToRatio(uid, newPortfolioRatio);
+  async function ({ body: { uid, newPortfolioRatio } }, res) {
+    await syncPortfolioToRatio(uid, newPortfolioRatio);
+    res.send({ msg: "Synced Portfolio" });
   }
 );
 
@@ -385,6 +390,12 @@ router.post("/AddStock", function ({ body: { stocks } }, res) {
     Stock.create({ ticker: stock.ticker, name: stock.name });
 
   res.send({ msg: `${stocks.length} stocks has been added` });
+});
+
+//ReloadPortfolio
+router.post("/ReloadPortfolio", async function ({ body: { uid } }, res) {
+  await syncPortfolioToKoInv(uid);
+  res.send({ msg: "Synced" });
 });
 
 router.get("/test", function ({ body: { uid } }, res) {
