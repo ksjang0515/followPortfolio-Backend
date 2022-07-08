@@ -551,6 +551,6 @@ Sync portfolio data to Korea Invest
 
 ```
 {
-
+  msg: "Synced"
 }
 ```
