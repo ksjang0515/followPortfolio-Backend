@@ -227,8 +227,10 @@ Get
 |totalSubscriber|Number|Number of subscribers|
 |portfolioRatio|Array||
 |- identifier|String|Either ticker or uid depending on ratioType|
+|- name|String||
 |- ratio|String||
 |- ratioType|String|"stock" or "subscription"|
+|- rateOfReturn|String||
 |totalBalance|Number|Total estimated value of user's portfolio<br>(subscription included)|
 |rateOfReturn|String|Rate of return of user's portfolio|
 

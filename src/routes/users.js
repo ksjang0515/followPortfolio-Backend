@@ -2,10 +2,15 @@ import express from "express";
 import User from "../models/user.js";
 import Client from "../api/koInvTokenUpdate.js";
 import Stock from "../models/stock.js";
+import { syncPortfolioToKoInv } from "../utils/utils.js";
 
 const router = express.Router();
 
-const getUserInfo = (user) => {
+const getUserInfo = async (uid) => {
+  await syncPortfolioToKoInv(uid);
+
+  const user = await User.findById(uid);
+
   const portfolioRatio = user.portfolioRatio.map((x) => {
     if (x.ratioType === "stock") {
       const stock = user.portfolio.find((y) => y.ticker === x.identifier);
@@ -55,8 +60,8 @@ router.get("/FollowingList", async function ({ query: { uid } }, res) {
 
   const following = [];
   for (const x of user.following) {
-    const followingUser = await User.findById(x.uid);
-    following.push(getUserInfo(followingUser));
+    const info = await getUserInfo(x.uid);
+    following.push(info);
   }
 
   res.send({ followingList: following });
@@ -106,7 +111,7 @@ router.get("/FollowingListStock", async function ({ query: { uid } }, res) {
 
 // RecommendUser
 router.get("/RecommendUser", function ({ query: { type } }, res) {
-  User.find({}).then((users) => {
+  User.find({}).then(async (users) => {
     console.log(type);
     if (type === "subscriber") {
       users.sort((a, b) => {
@@ -137,32 +142,31 @@ router.get("/RecommendUser", function ({ query: { type } }, res) {
       return;
     }
 
-    const recommendList = users.slice(0, 10).map((user) => {
-      return getUserInfo(user);
-    });
+    const recommendList = [];
+    for (const x of users) {
+      const info = await getUserInfo(x._id);
+      recommendList.push(info);
+    }
 
     res.send({ recommendation: recommendList });
   });
 });
 
 // UserInfo
-router.get("/UserInfo", function ({ query: { uid } }, res) {
+router.get("/UserInfo", async function ({ query: { uid } }, res) {
+  console.log(`UserInfo: ${uid}`);
+
   if (!uid) {
     res.send({ msg: "uid sent was empty" });
     return;
   }
 
-  User.findById(uid)
-    .then((user) => {
-      if (!user) res.status(404).send({ error: "User not found" });
+  const user = await User.findById(uid);
+  if (!user) res.status(404).send({ error: "User not found" });
 
-      const obj = getUserInfo(user);
+  const obj = await getUserInfo(user._id);
 
-      res.send(obj);
-    })
-    .catch((err) => {
-      res.status(500).send(err);
-    });
+  res.send(obj);
 });
 
 // isFollowing
