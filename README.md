@@ -233,6 +233,7 @@ Get
 |- ratio|String||
 |- ratioType|String|"stock" or "subscription"|
 |- rateOfReturn|String||
+|syncPeriod|String||
 |totalBalance|Number|Total estimated value of user's portfolio<br>(subscription included)|
 |rateOfReturn|String|Rate of return of user's portfolio|
 
