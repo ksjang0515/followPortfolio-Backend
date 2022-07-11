@@ -506,6 +506,47 @@ Returns whether user is subscribed to target user
 
 <br>
 
+## Get Kline of Ticker Symbol
+
+Returns list of kline data
+
+> GET /stocks/Kline
+
+**Parameters:**
+|Name|Type|Description|
+|:---|:---|:---|
+|uid|String|Uid of user|
+|ticker|String|Ticker symbol of stock|
+|interval|String|Interval of kline<br>Should be one of "D", "W", "M" each corresponding to Day, Week, Month|
+
+**Response:**
+|Name|Type|Description|
+|:---|:---|:---|
+|kline|array|Array of objects containing kline data of each interval|
+|- date|String|Format of YYYYMMDD|
+|- open|String||
+|- high|String||
+|- low|String||
+|- close|String||
+|- volume|String||
+
+```javascript
+{
+  kline: [
+    {
+      date: ,
+      open: ,
+      high: ,
+      low: ,
+      close: ,
+      volume: ,
+    }
+  ],
+}
+```
+
+<br>
+
 ## Sync Portfolio to Ratio
 
 Redistribute stock / subscription to given ratio or pervious ratio

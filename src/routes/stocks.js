@@ -90,12 +90,38 @@ router.get("/IsSubscribed", function ({ query: { uid, targetUid } }, res) {
   });
 });
 
+//Kline
+router.get(
+  "/Kline",
+  async function ({ query: { uid, ticker, interval } }, res) {
+    if (!uid) res.send({ msg: "uid was not sent" });
+    const user = await User.findById(uid);
+    const api = new Client(
+      user.appkey,
+      user.appsecret,
+      user.accNumFront,
+      user.accNumBack,
+      { token: user.token, tokenExpiration: user.tokenExpiration }
+    );
+
+    const response = await api.getKline(ticker, interval);
+    const newKline = response.body.output.map((x) => ({
+      date: x.stck_bsop_date,
+      open: x.stck_oprc,
+      high: x.stck_hgpr,
+      low: x.stck_lwpr,
+      close: x.stck_clpr,
+      volume: x.acml_vol,
+    }));
+
+    res.send({ kline: newKline });
+  }
+);
+
 //SyncPortfolio
 router.post(
   "/SyncPortfolio",
   async function ({ body: { uid, newPortfolioRatio } }, res) {
-    console.log(newPortfolioRatio);
-    return;
     await syncPortfolioToRatio(uid, newPortfolioRatio);
     res.send({ msg: "Synced Portfolio" });
   }

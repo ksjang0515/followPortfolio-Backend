@@ -154,7 +154,7 @@ router.get("/RecommendUser", function ({ query: { type } }, res) {
 
 // UserInfo
 router.get("/UserInfo", async function ({ query: { uid } }, res) {
-  console.log(`UserInfo: ${uid}`);
+  console.log(`${new Date()} UserInfo: ${uid}`);
 
   if (!uid) {
     res.send({ msg: "uid sent was empty" });

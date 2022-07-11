@@ -327,12 +327,20 @@ class KoreaInvestmentAPI {
   }
 
   async getKline(ticker, interval, resume = false) {
+    const token = await this.getToken();
+
     const obj = {
-      url: "/uapi/domestic-stock/v1/quotations/inquire-daily-price",
+      url:
+        this.options.domain +
+        "/uapi/domestic-stock/v1/quotations/inquire-daily-price",
       headers: {
         tr_id: "FHKST01010400",
+        authorization: `Bearer ${token}`,
+        appkey: this.appkey,
+        appsecret: this.appsecret,
+        "content-type": "application/json",
       },
-      data: {
+      params: {
         FID_COND_MRKT_DIV_CODE: "J",
         FID_INPUT_ISCD: ticker,
         FID_PERIOD_DIV_CODE: interval,
@@ -342,7 +350,10 @@ class KoreaInvestmentAPI {
     };
     if (resume) obj.headers.tr_cont = "N";
 
-    return this.request(obj, { addAccNum: false });
+    return axios(obj).then((res) => ({
+      header: res.headers,
+      body: res.data,
+    }));
   }
 
   tradeStream(ticker) {
