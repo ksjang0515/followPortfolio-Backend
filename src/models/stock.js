@@ -10,7 +10,11 @@ const stockSchema = new mongoose.Schema({
 });
 
 stockSchema.statics.create = function ({ ticker, name }) {
-  const newStock = new this({ ticker, name });
+  const newStock = new this({
+    ticker,
+    name,
+    lastUpdated: new Date(),
+  });
   newStock.save();
 };
 

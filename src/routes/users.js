@@ -108,7 +108,7 @@ router.get("/FollowingListStock", async function ({ query: { uid } }, res) {
 
 // RecommendUser
 router.get("/RecommendUser", async function ({ query: { type } }, res) {
-  const users = User.find({});
+  const users = await User.find({});
 
   if (type === "subscriber") {
     users.sort((a, b) => {
@@ -280,6 +280,7 @@ router.post(
         portfolioRatio = [];
 
       for (const stock of response.body.output1) {
+        if (stock.hldg_qty === "0") continue;
         portfolio.push({
           ticker: stock.pdno,
           name: stock.prdt_name,

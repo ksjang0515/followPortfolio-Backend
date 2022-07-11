@@ -10,7 +10,7 @@ const checkId = (id) => {
   return false;
 };
 
-const getApi = async (user) => {
+const getApi = (user) => {
   const api = new Client(
     user.appkey,
     user.appsecret,
@@ -25,7 +25,8 @@ const getApi = async (user) => {
 const getUser = async (uid, update = true, forceUpdate = false) => {
   // check uid
   if (!uid) throw `Uid not sent: ${uid}`;
-  if (!checkId(uid)) throw `Wrong uid sent: ${uid}`;
+
+  if (typeof uid !== "object" && !checkId(uid)) throw `Wrong uid sent: ${uid}`;
 
   // get user
   const user = await User.findById(uid);
@@ -35,7 +36,8 @@ const getUser = async (uid, update = true, forceUpdate = false) => {
 
   // check user needs a new update
   const dt = new Date();
-  if (forceUpdate || dt - user.lastSynced > 10) {
+  const lastSynced = new Date(user.lastSynced);
+  if (forceUpdate || dt - lastSynced > 10000) {
     await syncPortfolioToKoInv(uid);
     const newUser = await User.findById(uid);
     return newUser;
@@ -56,7 +58,8 @@ const getStock = async (ticker, api, update = true) => {
 
   // check stock needs a new update
   const dt = new Date();
-  if (dt - stock.lastUpdated > 10) {
+  const lastUpdated = new Date(stock.lastUpdated);
+  if (dt - lastUpdated > 10000) {
     if (!api) throw "Api was not passed to getStock when updating";
 
     const res = await api.getPrice(ticker);
@@ -68,7 +71,7 @@ const getStock = async (ticker, api, update = true) => {
           lastUpdated: dt,
           price: res.body.output.stck_prpr,
           marginRate: res.body.output.marg_rate,
-          dailyProfit: response.body.output.prdy_ctrt,
+          dailyProfit: res.body.output.prdy_ctrt,
         },
       }
     );
@@ -351,6 +354,7 @@ const syncPortfolioToRatio = async function (uid, newPortfolioRatio = null) {
 
 export {
   syncPortfolioToRatio,
+  syncPortfolioToKoInv,
   getStock,
   getApi,
   getUser,
