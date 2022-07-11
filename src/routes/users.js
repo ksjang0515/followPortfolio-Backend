@@ -2,18 +2,23 @@ import express from "express";
 import User from "../models/user.js";
 import Client from "../api/koInvTokenUpdate.js";
 import Stock from "../models/stock.js";
-import { syncPortfolioToKoInv } from "../utils/utils.js";
+import {
+  getStock,
+  getUser,
+  getApi,
+  calculateAccRateOfReturn,
+} from "../utils/utils.js";
 
 const router = express.Router();
 
 const getUserInfo = async (uid) => {
-  await syncPortfolioToKoInv(uid);
-
-  const user = await User.findById(uid);
+  const user = await getUser(uid, true, true);
 
   const portfolioRatio = user.portfolioRatio.map((x) => {
     if (x.ratioType === "stock") {
       const stock = user.portfolio.find((y) => y.ticker === x.identifier);
+      if (!stock)
+        throw `Stock in portfolioRatio was not found in portfolio: ${x.identifier}`;
       x.name = stock.name;
       x.rateOfReturn = stock.rateOfReturn;
     } else {
@@ -36,6 +41,8 @@ const getUserInfo = async (uid) => {
     };
   });
 
+  //console.log(portfolioRatio);
+
   return {
     uid: user.id.toString(),
     nickname: user.nickname,
@@ -56,7 +63,7 @@ router.get("/", function (req, res) {
 
 //FollowingList
 router.get("/FollowingList", async function ({ query: { uid } }, res) {
-  const user = await User.findById(uid);
+  const user = await getUser(uid, false);
 
   const following = [];
   for (const x of user.following) {
@@ -68,41 +75,31 @@ router.get("/FollowingList", async function ({ query: { uid } }, res) {
 });
 
 // SyncPeriod
-router.get("/SyncPeriod", function ({ query: { uid } }, res) {
-  User.findById(uid).then((user) => {
-    res.send({ syncPeriod: user.syncPeriod });
-  });
+router.get("/SyncPeriod", async function ({ query: { uid } }, res) {
+  const user = await getUser(uid, false);
+
+  res.send({ syncPeriod: user.syncPeriod });
 });
 
 // Description
-router.get("/Description", function ({ query: { uid } }, res) {
-  User.findById(uid)
-    .then((user) => {
-      if (!user) res.status(404).send({ error: "User not found" });
-      else res.send({ description: user.description });
-    })
-    .catch((err) => res.status(500).send(err));
+router.get("/Description", async function ({ query: { uid } }, res) {
+  const user = await getUser(uid, false);
+
+  res.send({ description: user.description });
 });
 
 // FollowingListStock
 router.get("/FollowingListStock", async function ({ query: { uid } }, res) {
-  const user = await User.findById(uid);
-
-  const api = new Client(
-    user.appkey,
-    user.appsecret,
-    user.accNumFront,
-    user.accNumBack,
-    { token: user.token, tokenExpiration: user.tokenExpiration }
-  );
+  const user = await getUser(uid, false);
+  const api = getApi(user);
 
   const followingStock = [];
   for (const stock of user.followingStock) {
-    const response = await api.getPrice(stock.ticker);
+    const stockRes = await getStock(stock.ticker, api);
     followingStock.push({
-      ticker: stock.ticker,
-      name: stock.name,
-      dailyProfit: response.body.output.prdy_ctrt * 0.01, //TODO
+      ticker: stockRes.ticker,
+      name: stockRes.name,
+      dailyProfit: stockRes.dailyProfit * 0.01, //TODO
     });
   }
 
@@ -110,76 +107,67 @@ router.get("/FollowingListStock", async function ({ query: { uid } }, res) {
 });
 
 // RecommendUser
-router.get("/RecommendUser", function ({ query: { type } }, res) {
-  User.find({}).then(async (users) => {
-    console.log(type);
-    if (type === "subscriber") {
-      users.sort((a, b) => {
-        const aFollowerLen = a.subscriber.length,
-          bFollowerLen = b.subscriber.length;
+router.get("/RecommendUser", async function ({ query: { type } }, res) {
+  const users = User.find({});
 
-        if (aFollowerLen > bFollowerLen) return -1;
-        if (aFollowerLen < bFollowerLen) return 1;
-        return 0;
-      });
-    } else if (type === "profit") {
-      users.sort((a, b) => {
-        const aProfit = parseFloat(a.rateOfReturn.toString()),
-          bProfit = parseFloat(b.rateOfReturn.toString());
+  if (type === "subscriber") {
+    users.sort((a, b) => {
+      const aFollowerLen = a.subscriber.length,
+        bFollowerLen = b.subscriber.length;
 
-        if (aProfit > bProfit) return -1;
-        if (aProfit < bProfit) return 1;
-        return 0;
-      });
-    } else if (type === "balance") {
-      users.sort((a, b) => {
-        if (a.totalBalance > b.totalBalance) return -1;
-        if (a.totalBalance < b.totalBalance) return 1;
-        return 0;
-      });
-    } else {
-      res.status(500).send({ msg: "Wrong type has been sent" });
-      return;
-    }
+      if (aFollowerLen > bFollowerLen) return -1;
+      if (aFollowerLen < bFollowerLen) return 1;
+      return 0;
+    });
+  } else if (type === "profit") {
+    users.sort((a, b) => {
+      const aProfit = parseFloat(a.rateOfReturn.toString()),
+        bProfit = parseFloat(b.rateOfReturn.toString());
 
-    const recommendList = [];
-    for (const x of users) {
-      const info = await getUserInfo(x._id);
-      recommendList.push(info);
-    }
+      if (aProfit > bProfit) return -1;
+      if (aProfit < bProfit) return 1;
+      return 0;
+    });
+  } else if (type === "balance") {
+    users.sort((a, b) => {
+      if (a.totalBalance > b.totalBalance) return -1;
+      if (a.totalBalance < b.totalBalance) return 1;
+      return 0;
+    });
+  } else {
+    res.status(500).send({ msg: "Wrong type has been sent" });
+    return;
+  }
 
-    res.send({ recommendation: recommendList });
-  });
+  const recommendList = [];
+  for (const x of users) {
+    const info = await getUserInfo(x._id);
+    recommendList.push(info);
+  }
+
+  res.send({ recommendation: recommendList });
 });
 
 // UserInfo
 router.get("/UserInfo", async function ({ query: { uid } }, res) {
   console.log(`${new Date()} UserInfo: ${uid}`);
 
-  if (!uid) {
-    res.send({ msg: "uid sent was empty" });
-    return;
-  }
-
-  const user = await User.findById(uid);
-  if (!user) res.status(404).send({ error: "User not found" });
-
-  const obj = await getUserInfo(user._id);
+  const obj = await getUserInfo(uid);
 
   res.send(obj);
 });
 
 // isFollowing
-router.get("/isFollowing", function ({ query: { uid, targetUid } }, res) {
-  User.findById(uid).then((user) => {
-    let flag = false;
-    for (let i = 0; i < user.following.length; i++)
-      if (user.following[i].uid === targetUid) {
-        flag = true;
-        break;
-      }
-    res.send({ isFollowing: flag });
-  });
+router.get("/isFollowing", async function ({ query: { uid, targetUid } }, res) {
+  const user = await User.findById(uid);
+
+  let flag = false;
+  for (let i = 0; i < user.following.length; i++)
+    if (user.following[i].uid === targetUid) {
+      flag = true;
+      break;
+    }
+  res.send({ isFollowing: flag });
 });
 
 // ChangeSyncPeriod
@@ -331,7 +319,7 @@ router.post(
         portfolioRatio,
         remainingCash,
         totalBalance,
-        rateOfReturn: response.body.output2[0].asst_icdc_erng_rt,
+        rateOfReturn: calculateAccRateOfReturn(response),
         token: api.options.token,
         tokenExpiration: api.options.tokenExpiration,
       }).then((user) => res.send({ msg: "Added new User", user }));

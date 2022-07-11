@@ -86,6 +86,7 @@ userSchema.statics.create = function ({
     rateOfReturn,
     token,
     tokenExpiration,
+    lastSynced: new Date(),
   });
 
   return newUser.save();

@@ -1,8 +1,12 @@
 import mongoose from "mongoose";
 
 const stockSchema = new mongoose.Schema({
-  ticker: String,
+  ticker: { type: String, unique: true, index: true },
   name: String,
+  lastUpdated: Date,
+  price: Number,
+  marginRate: String,
+  dailyProfit: String,
 });
 
 stockSchema.statics.create = function ({ ticker, name }) {

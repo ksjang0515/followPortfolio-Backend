@@ -1,11 +1,16 @@
 import Stock from "../models/stock.js";
 import User from "../models/user.js";
 import Client from "../api/koInvTokenUpdate.js";
+import { response } from "express";
 
-const syncPortfolioToKoInv = async function (uid) {
-  const user = await User.findById(uid);
-  if (!user) return;
+const checkId = (id) => {
+  if (id.match(/^[0-9a-fA-F]{24}$/)) {
+    return true;
+  }
+  return false;
+};
 
+const getApi = async (user) => {
   const api = new Client(
     user.appkey,
     user.appsecret,
@@ -13,6 +18,79 @@ const syncPortfolioToKoInv = async function (uid) {
     user.accNumBack,
     { token: user.token, tokenExpiration: user.tokenExpiration }
   );
+
+  return api;
+};
+
+const getUser = async (uid, update = true, forceUpdate = false) => {
+  // check uid
+  if (!uid) throw `Uid not sent: ${uid}`;
+  if (!checkId(uid)) throw `Wrong uid sent: ${uid}`;
+
+  // get user
+  const user = await User.findById(uid);
+  if (!user) throw `User not found: ${uid}`;
+
+  if (!update) return user;
+
+  // check user needs a new update
+  const dt = new Date();
+  if (forceUpdate || dt - user.lastSynced > 10) {
+    await syncPortfolioToKoInv(uid);
+    const newUser = await User.findById(uid);
+    return newUser;
+  }
+
+  return user;
+};
+
+const getStock = async (ticker, api, update = true) => {
+  // check ticker
+  if (!ticker) throw `Invalid ticker has been sent: ${ticker}`;
+
+  // get stock
+  const stock = await Stock.findOne({ ticker: ticker });
+  if (!stock) throw `Invalid ticker has been sent: ${ticker}`;
+
+  if (!update) return stock;
+
+  // check stock needs a new update
+  const dt = new Date();
+  if (dt - stock.lastUpdated > 10) {
+    if (!api) throw "Api was not passed to getStock when updating";
+
+    const res = await api.getPrice(ticker);
+
+    await Stock.findOneAndUpdate(
+      { ticker: ticker },
+      {
+        $set: {
+          lastUpdated: dt,
+          price: res.body.output.stck_prpr,
+          marginRate: res.body.output.marg_rate,
+          dailyProfit: response.body.output.prdy_ctrt,
+        },
+      }
+    );
+
+    const newStock = await Stock.findOne({ ticker: ticker });
+
+    return newStock;
+  }
+
+  return stock;
+};
+
+const calculateAccRateOfReturn = (response) =>
+  (
+    response.body.output2[0].asst_icdc_amt /
+    response.body.output2[0].bfdy_tot_asst_evlu_amt
+  ).toFixed(4);
+
+const syncPortfolioToKoInv = async function (uid) {
+  const user = await getUser(uid, false);
+  const api = await getApi(user);
+
   const response = await api.balance("01");
 
   const newPortfolio = [];
@@ -25,12 +103,13 @@ const syncPortfolioToKoInv = async function (uid) {
       estimatedValue: elem.evlu_amt,
       rateOfReturn: elem.evlu_pfls_rt * 0.01,
     });
+    // cannot update stock here because there is no dailyProfit value
   }
 
   // 예수금
   let remainingCash = response.body.output2[0].prvs_rcdl_excc_amt;
 
-  // Subscription마다 주식 잔고와 예수금 제외 및 subscription 정보로 저장
+  // update estimatedValue of each subscription
   const newSubscription = [];
   for (const elem of user.subscription) {
     const x = {
@@ -38,6 +117,7 @@ const syncPortfolioToKoInv = async function (uid) {
       nickname: elem.nickname,
       stock: [],
       balance: 0,
+      inputBalance: elem.inputBalance, // inputBalance only changes during sync portfolio to ratio
     };
 
     for (const stock of elem.stock) {
@@ -47,7 +127,7 @@ const syncPortfolioToKoInv = async function (uid) {
           ticker: stock.ticker,
           name: stock.name,
           qty: stock.qty,
-          estimatedValue: stock.estimatedValue,
+          estimatedValue: stock.estimatedValue, // should be same to stock.qty because this is 예수금
         });
         x.balance += stock.estimatedValue;
         continue;
@@ -68,7 +148,6 @@ const syncPortfolioToKoInv = async function (uid) {
 
       x.balance += portfolioObj.prpr * stock.qty;
     }
-    x.inputBalance = x.balance;
     newSubscription.push(x);
   }
 
@@ -86,39 +165,25 @@ const syncPortfolioToKoInv = async function (uid) {
       portfolio: newPortfolio,
       subscription: user.subscription,
       totalBalance: response.body.output2[0].tot_evlu_amt,
+      rateOfReturn: calculateAccRateOfReturn(response),
     },
   }).exec();
 };
 
-const getPriceNMarginRate = async (api, ticker) => {
-  const res = await api.getPrice(ticker);
-
-  return {
-    price: res.body.output.stck_prpr,
-    marginRate: res.body.output.marg_rate,
-  };
+const getPriceNMarginRate = async (ticker, api) => {
+  const stock = getStock(ticker, api);
+  return { price: stock.price, marginRate: stock.marginRate };
 };
 
-const calQty = (balance, { marginRate, price }) =>
-  parseInt((balance * (1 / (1 + marginRate / 100))) / price);
-
 const syncPortfolioToRatio = async function (uid, newPortfolioRatio = null) {
-  await syncPortfolioToKoInv(uid);
-
   // newPortfolioRatio: [{identifier, ratio, type}]
-  const user = await User.findById(uid);
+  const user = await getUser(uid, true, true);
+  const api = await getApi(user);
 
   // get current raw portfolio(made of only stocks and not subscriptions)
   // from korea Invest
   if (!newPortfolioRatio) newPortfolioRatio = user.portfolioRatio;
 
-  const api = new Client(
-    user.appkey,
-    user.appsecret,
-    user.accNumFront,
-    user.accNumBack,
-    { token: user.token, tokenExpiration: user.tokenExpiration }
-  );
   const currentRawPortfolio = {};
   for (const stock of user.portfolio)
     if (stock.ticker !== "000000")
@@ -141,7 +206,7 @@ const syncPortfolioToRatio = async function (uid, newPortfolioRatio = null) {
     if (elem.ratioType === "stock") {
       if (elem.identifier === "000000") continue;
 
-      const priceNMarginRate = await getPriceNMarginRate(api, elem.identifier);
+      const priceNMarginRate = await getPriceNMarginRate(elem.identifier, api);
       newRawPortfolio[elem.identifier] = newRawPortfolio[elem.identifier]
         ? newRawPortfolio[elem.identifier] +
           calQty(totalBalance * elem.ratio, priceNMarginRate)
@@ -155,7 +220,7 @@ const syncPortfolioToRatio = async function (uid, newPortfolioRatio = null) {
         };
 
       let remainingCash = subBalance;
-      const targetUser = await User.findById(obj.uid);
+      const targetUser = await getUser(obj.uid, false);
       // get portfolio ratio of target user
       for (const stockRatio of targetUser.portfolioRatio) {
         if (
@@ -164,8 +229,8 @@ const syncPortfolioToRatio = async function (uid, newPortfolioRatio = null) {
         )
           continue;
         const priceNMarginRate = await getPriceNMarginRate(
-          api,
-          stockRatio.identifier
+          stockRatio.identifier,
+          api
         );
         const balance = parseInt(stockRatio.ratio * obj.balance),
           qty = calQty(balance, priceNMarginRate);
@@ -231,13 +296,9 @@ const syncPortfolioToRatio = async function (uid, newPortfolioRatio = null) {
 
   const arr = [];
   for (const x of newSubscription) {
-    const targetUser = await User.findById(x.uid);
+    const targetUser = await getUser(x.uid, false);
     const subscriber = targetUser.subscriber.find((y) => y.uid === uid);
     if (subscriber) {
-      const test = await User.findOne({
-        _id: x.uid,
-        "subscriber.uid": uid,
-      });
       await User.findOneAndUpdate(
         { _id: x.uid, "subscriber.uid": uid },
         {
@@ -288,4 +349,10 @@ const syncPortfolioToRatio = async function (uid, newPortfolioRatio = null) {
   await syncPortfolioToKoInv(uid);
 };
 
-export { syncPortfolioToKoInv, syncPortfolioToRatio };
+export {
+  syncPortfolioToRatio,
+  getStock,
+  getApi,
+  getUser,
+  calculateAccRateOfReturn,
+};

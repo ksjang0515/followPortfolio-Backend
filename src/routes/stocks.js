@@ -122,6 +122,17 @@ router.get(
 router.post(
   "/SyncPortfolio",
   async function ({ body: { uid, newPortfolioRatio } }, res) {
+    const dt = new Date();
+    if (dt.getHours() < 9 || (dt.getHours() > 3 && dt.getMinutes() > 15))
+      res.send({ msg: "Market is not open yet" });
+
+    if (newPortfolioRatio) {
+      console.log(`newPortfolioRatio`);
+      for (const elem of newPortfolioRatio) {
+        console.log(elem.identifier, elem.ratio);
+      }
+    }
+
     await syncPortfolioToRatio(uid, newPortfolioRatio);
     res.send({ msg: "Synced Portfolio" });
   }

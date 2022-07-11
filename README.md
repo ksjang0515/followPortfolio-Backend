@@ -7,8 +7,10 @@ Also it would make more sense to put uid on headers andd add access token and re
 Some endpoint is not included in description below, since it will not be used in prototype
 
 TODO
-1. RecommendUser
-2. Fix decimal precision bugs
+1. When stock quantity is less than 1, causes error when getting user info
+2. move 예수금 to the last of list
+3. reduce api calls
+4. 
 
 
 
